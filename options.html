@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>快捷AI - 设置</title>
+    <link rel="stylesheet" href="options.css">
+  </head>
+  <body>
+    <main class="settings">
+      <header class="page-header">
+        <div class="eyebrow">EDGE EXTENSION</div>
+        <h1>快捷AI</h1>
+        <p>设置 API 连接和多组提示词。选中文字后，在右键菜单中选择要使用的提示词。</p>
+      </header>
+
+      <form id="settings-form">
+        <label class="field">
+          <span>AI 服务 API Key</span>
+          <input id="api-key" name="apiKey" type="password" autocomplete="off" spellcheck="false" placeholder="sk-…">
+          <small>仅保存在此浏览器配置中，并由扩展后台用于 API 请求。</small>
+        </label>
+
+        <label class="field">
+          <span>模型名称</span>
+          <input id="model" name="model" type="text" required spellcheck="false" placeholder="gpt-6-luna">
+        </label>
+
+        <label class="field">
+          <span>API Base URL</span>
+          <input id="base-url" name="baseUrl" type="url" required spellcheck="false" placeholder="https://api.openai.com/v1">
+          <small>填写兼容 OpenAI Chat Completions 的 AI 服务根地址，扩展会调用其 /chat/completions 接口。保存时会请求访问该站点的权限。</small>
+          <small id="http-warning" class="warning" hidden>HTTP 不加密传输，API Key 和选中文字可能被网络中的其他人读取。只对可信的本机或内网服务使用。</small>
+        </label>
+
+        <section class="field prompt-field" aria-labelledby="prompts-heading">
+          <div class="section-heading">
+            <span id="prompts-heading">提示词</span>
+            <button id="add-prompt" class="secondary-button" type="button">添加提示词</button>
+          </div>
+          <div id="prompts-list" class="prompts-list"></div>
+          <small>右键选中文字后，在“快捷AI”子菜单中手动选择要使用的提示词。</small>
+        </section>
+
+        <div class="form-footer">
+          <p id="save-status" class="status" role="status" aria-live="polite"></p>
+          <button id="save-button" type="submit">保存设置</button>
+        </div>
+      </form>
+
+      <p class="privacy-note">每次请求只发送所选提示词和你选中的文字，不会读取整页内容。</p>
+    </main>
+    <script type="module" src="options.js"></script>
+  </body>
+</html>

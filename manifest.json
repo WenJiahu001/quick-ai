@@ -1,0 +1,26 @@
+{
+  "manifest_version": 3,
+  "name": "快捷AI",
+  "version": "1.0.0",
+  "description": "选中网页文字，使用快捷AI提示词获取 AI 回复。",
+  "permissions": [
+    "activeTab",
+    "contextMenus",
+    "scripting",
+    "storage",
+    "clipboardWrite"
+  ],
+  "host_permissions": [],
+  "optional_host_permissions": [
+    "https://*/*",
+    "http://*/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "options_page": "options.html",
+  "action": {
+    "default_title": "快捷AI"
+  }
+}
