@@ -315,12 +315,16 @@ async function readEventStream(body, onEvent, signal) {
   let buffer = "";
   let dataLines = [];
   let completed = false;
+  let doneMarkerReceived = false;
 
   const dispatch = async () => {
-    if (!dataLines.length) return;
+    if (!dataLines.length) return false;
     const data = dataLines.join("\n");
     dataLines = [];
-    if (data === "[DONE]") return;
+    if (data === "[DONE]") {
+      doneMarkerReceived = true;
+      return true;
+    }
 
     let event;
     try {
@@ -329,6 +333,7 @@ async function readEventStream(body, onEvent, signal) {
       throw new Error("AI 服务返回了无法识别的流式数据。");
     }
     await onEvent(event);
+    return false;
   };
 
   const consumeLines = async (flush = false) => {
@@ -337,26 +342,31 @@ async function readEventStream(body, onEvent, signal) {
     for (const line of lines) {
       if (line === "") {
         await dispatch();
+        if (doneMarkerReceived) return true;
       } else if (line.startsWith("data:")) {
         dataLines.push(line.slice(5).trimStart());
       }
     }
     if (flush) await dispatch();
+    return doneMarkerReceived;
   };
 
   try {
-    while (true) {
+    while (!doneMarkerReceived) {
       if (signal.aborted) throw new DOMException("请求已取消", "AbortError");
       const { value, done } = await reader.read();
       if (done) break;
       buffer += decoder.decode(value, { stream: true });
       await consumeLines();
     }
-    buffer += decoder.decode();
-    await consumeLines(true);
+    if (!doneMarkerReceived) {
+      buffer += decoder.decode();
+      await consumeLines(true);
+    }
     completed = true;
   } finally {
-    if (!completed) await reader.cancel().catch(() => {});
+    // [DONE] 后关闭响应体，避免等待服务端关闭连接或继续读取无关数据。
+    if (!completed || doneMarkerReceived) await reader.cancel().catch(() => {});
     reader.releaseLock();
   }
 }

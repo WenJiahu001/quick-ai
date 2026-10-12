@@ -4,7 +4,7 @@
 
   const host = document.createElement("div");
   host.id = "selection-ai-overlay-host";
-  host.style.cssText = "all:initial;position:fixed;z-index:2147483647;top:20px;left:auto;right:20px";
+  host.style.cssText = "all:initial;position:fixed;z-index:2147483647;top:20px;left:auto;right:12px";
   (document.documentElement || document.body).appendChild(host);
 
   const shadow = host.attachShadow({ mode: "closed" });
@@ -27,7 +27,7 @@
     .visibility-button { display:grid; place-items:center; flex:none; width:30px; height:30px; padding:0; border:1px solid #e3e8f0; border-radius:8px; background:#fff; color:#53627a; }
     .visibility-button:hover { background:#f0f3f8; }
     .visibility-button:focus-visible { outline:3px solid #82a8ff; outline-offset:2px; }
-    .restore-button { position:fixed; top:20px; right:20px; display:grid; place-items:center; width:30px; height:30px; padding:0; border:1px solid #e3e8f0; border-radius:8px; color:#53627a; background:#fff; box-shadow:none; font-size:14px; line-height:1; cursor:pointer; }
+    .restore-button { position:fixed; top:20px; right:12px; display:grid; place-items:center; width:30px; height:30px; padding:0; border:1px solid #e3e8f0; border-radius:8px; color:#53627a; background:#fff; box-shadow:none; font-size:14px; line-height:1; cursor:pointer; }
     .restore-button[hidden] { display:none; }
     .restore-button:hover { background:#f0f3f8; }
     .restore-button:focus-visible { outline:3px solid #82a8ff; outline-offset:2px; }
@@ -195,24 +195,29 @@
   let lastRequest = null;
   let streamRenderTimer = 0;
   let pendingStreamText = "";
-  let pendingStreamBatches = 0;
-  const STREAM_RENDER_INTERVAL_MS = 120;
-  const STREAM_RENDER_EVERY_BATCHES = 3;
-  const MAX_MARKDOWN_RENDER_CHARS = 30_000;
+  let streamTextNode = null;
+  const STREAM_RENDER_INTERVAL_MS = 100;
+  const MAX_MARKDOWN_RENDER_CHARS = 16_000;
 
   const renderFinalResponse = () => {
     clearTimeout(streamRenderTimer);
     streamRenderTimer = 0;
     pendingStreamText = "";
-    pendingStreamBatches = 0;
+    streamTextNode = null;
     if (fullText.length > MAX_MARKDOWN_RENDER_CHARS) {
       // 超长回复保留原文，避免构造大量 Markdown 节点阻塞网页主线程。
       body.classList.add("streaming");
       body.textContent = fullText;
       return false;
     }
-    body.classList.remove("streaming");
-    renderMarkdown(fullText, body);
+    try {
+      body.classList.remove("streaming");
+      renderMarkdown(fullText, body);
+    } catch {
+      body.classList.add("streaming");
+      body.textContent = fullText;
+      return false;
+    }
     copyButton.hidden = !fullText;
     return true;
   };
@@ -221,11 +226,15 @@
     if (streamRenderTimer) return;
     streamRenderTimer = window.setTimeout(() => {
       streamRenderTimer = 0;
-      if (pendingStreamBatches < STREAM_RENDER_EVERY_BATCHES || !pendingStreamText) return;
+      if (!pendingStreamText) return;
+      // 生成中只追加增量纯文本，避免每次都重解析整段 Markdown。
       body.classList.add("streaming");
-      body.append(document.createTextNode(pendingStreamText));
+      if (!streamTextNode) {
+        streamTextNode = document.createTextNode("");
+        body.append(streamTextNode);
+      }
+      streamTextNode.appendData(pendingStreamText);
       pendingStreamText = "";
-      pendingStreamBatches = 0;
       copyButton.hidden = !fullText;
     }, STREAM_RENDER_INTERVAL_MS);
   };
@@ -412,7 +421,7 @@
       };
       fullText = "";
       pendingStreamText = "";
-      pendingStreamBatches = 0;
+      streamTextNode = null;
       requestDetails.open = false;
       requestSummary.textContent = `提示词${message.promptName ? ` · ${message.promptName}` : ""}`;
       requestText.textContent = message.promptText || "";
@@ -437,13 +446,12 @@
     if (message.type === "APPEND_TEXT") {
       fullText += message.text;
       pendingStreamText += message.text;
-      pendingStreamBatches += 1;
       scheduleStreamingUpdate();
     } else if (message.type === "STREAM_DONE") {
       const markdownRendered = renderFinalResponse();
       spinner.hidden = true;
       status.textContent = fullText
-        ? (markdownRendered ? "生成完成" : "生成完成（内容较长，已使用纯文本显示以保持页面流畅）")
+        ? (markdownRendered ? "生成完成" : "生成完成（为保持页面流畅，使用纯文本显示）")
         : "模型没有返回文字内容。";
       copyButton.hidden = !fullText;
       retryButton.hidden = true;
@@ -451,7 +459,7 @@
       clearTimeout(streamRenderTimer);
       streamRenderTimer = 0;
       pendingStreamText = "";
-      pendingStreamBatches = 0;
+      streamTextNode = null;
       spinner.hidden = true;
       body.textContent = message.message || "请求失败，请稍后重试。";
       body.classList.add("error");
