@@ -17,12 +17,18 @@ const activeRequests = new Map();
 const REQUEST_TIMEOUT_MS = 120_000;
 const extensionApi = globalThis.quickAiBrowserApi;
 let menuRefreshQueue = Promise.resolve();
+let menuRefreshPending = false;
+let menuRefreshInProgress = false;
 
 extensionApi.runtime.onInstalled.addListener(() => {
   void refreshContextMenus();
 });
 
 extensionApi.runtime.onStartup.addListener(() => void refreshContextMenus());
+
+extensionApi.action.onClicked.addListener(() => {
+  void Promise.resolve().then(() => extensionApi.runtime.openOptionsPage()).catch(() => {});
+});
 
 extensionApi.storage.onChanged.addListener((changes, areaName) => {
   if (areaName === "local" && (changes.prompts || changes.prompt)) {
@@ -41,7 +47,15 @@ extensionApi.contextMenus.onClicked.addListener((info, tab) => {
   void beginRequest(tab.id, selectedText, promptId);
 });
 
-extensionApi.runtime.onMessage.addListener((message, sender) => {
+extensionApi.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message?.type === "REFRESH_CONTEXT_MENUS") {
+    void refreshContextMenus().then(
+      (ok) => sendResponse({ ok }),
+      () => sendResponse({ ok: false })
+    );
+    return true;
+  }
+
   if (message?.type === "RETRY_REQUEST") {
     const tabId = sender.tab?.id;
     const selectedText = String(message.selectedText ?? "");
@@ -64,7 +78,24 @@ extensionApi.runtime.onMessage.addListener((message, sender) => {
 });
 
 function refreshContextMenus() {
-  menuRefreshQueue = menuRefreshQueue.then(buildContextMenus, buildContextMenus);
+  menuRefreshPending = true;
+  if (menuRefreshInProgress) return menuRefreshQueue;
+
+  menuRefreshInProgress = true;
+  menuRefreshQueue = menuRefreshQueue.then(async () => {
+    let succeeded = true;
+    try {
+      // 合并构建期间到达的存储事件与显式刷新请求，避免旧菜单在新菜单之后落地。
+      while (menuRefreshPending) {
+        menuRefreshPending = false;
+        succeeded = await buildContextMenus();
+      }
+    } finally {
+      menuRefreshInProgress = false;
+      if (menuRefreshPending) void refreshContextMenus();
+    }
+    return succeeded;
+  });
   return menuRefreshQueue;
 }
 
@@ -73,27 +104,44 @@ async function buildContextMenus() {
     const stored = await extensionApi.storage.local.get(["prompts", "prompt"]);
     const prompts = normalizePrompts(stored.prompts, stored.prompt).filter((prompt) => prompt.enabled);
     await extensionApi.contextMenus.removeAll();
-    if (!prompts.length) return;
+    if (!prompts.length) return true;
     const orderedPrompts = [
       ...prompts.filter((prompt) => prompt.favorite),
       ...prompts.filter((prompt) => !prompt.favorite)
     ];
-    extensionApi.contextMenus.create({
+    await createContextMenu({
       id: MENU_ID,
       title: "快捷AI",
       contexts: ["selection"]
     });
     for (const prompt of orderedPrompts) {
-      extensionApi.contextMenus.create({
+      await createContextMenu({
         id: `${MENU_ITEM_PREFIX}${prompt.id}`,
         parentId: MENU_ID,
         title: prompt.favorite ? `常用 · ${prompt.name}` : prompt.name,
         contexts: ["selection"]
       });
     }
+    return true;
   } catch {
     // 菜单会在下次扩展启动或设置变更时重新构建。
+    return false;
   }
+}
+
+function createContextMenu(properties) {
+  if (globalThis.browser?.contextMenus === extensionApi.contextMenus) {
+    return extensionApi.contextMenus.create(properties);
+  }
+
+  // Chromium 的 callback API 可确认菜单创建已完成后再处理下一次刷新。
+  return new Promise((resolve, reject) => {
+    extensionApi.contextMenus.create(properties, () => {
+      const error = extensionApi.runtime.lastError;
+      if (error) reject(new Error(error.message));
+      else resolve();
+    });
+  });
 }
 
 async function beginRequest(tabId, selectedText, promptId) {

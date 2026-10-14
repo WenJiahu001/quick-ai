@@ -10,7 +10,7 @@
 body {
   min-width: 320px;
   margin: 0;
-  padding: 48px 20px;
+  padding: 48px 20px 128px;
   background: radial-gradient(circle at 50% 0, #e3edff 0, #f3f6fb 420px);
 }
 
@@ -29,13 +29,23 @@ body {
 h1 { margin: 8px 0 7px; font-size: 28px; letter-spacing: -.03em; }
 .page-header p { margin: 0; color: #68758a; line-height: 1.6; }
 
-form { display: grid; gap: 21px; }
+.settings-tabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 5px; margin-bottom: 18px; padding: 5px; border: 1px solid #e2e8f1; border-radius: 11px; background: #f5f7fb; }
+.settings-tab { min-height: 40px; padding: 7px 10px; border-radius: 7px; color: #637087; background: transparent; font-size: 12px; }
+.settings-tab:hover { color: #244b9c; background: #eaf0fb; }
+.settings-tab[aria-selected="true"] { color: #244b9c; background: #fff; box-shadow: 0 1px 4px rgba(24, 44, 81, .12); }
+.settings-tab:focus-visible { outline: 3px solid #82a8ff; outline-offset: 1px; }
+form { display: block; }
+.tab-panel { display: grid; gap: 17px; }
+.tab-panel[hidden] { display: none; }
 .provider-section { display: grid; gap: 17px; padding: 18px; border: 1px solid #e0e6ef; border-radius: 12px; background: #fbfcfe; }
 .provider-picker { max-width: 420px; }
 .transfer-section { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 18px; border: 1px solid #e0e6ef; border-radius: 12px; background: #fbfcfe; }
 .transfer-section h2 { margin: 0 0 5px; font-size: 15px; }
 .transfer-section p { max-width: 470px; margin: 0; color: #718097; font-size: 12px; font-weight: 400; line-height: 1.6; }
 .transfer-section .section-actions { flex: none; }
+.backup-note { margin: 0; color: #718097; font-size: 12px; line-height: 1.6; }
+.panel-footer { position: fixed; z-index: 10; bottom: 14px; left: 50%; display: flex; align-items: center; justify-content: space-between; gap: 16px; width: min(700px, calc(100vw - 120px)); padding: 12px 14px; border: 1px solid #d7dfeb; border-radius: 12px; background: rgba(255, 255, 255, .97); box-shadow: 0 8px 28px rgba(24, 44, 81, .18); backdrop-filter: blur(10px); transform: translateX(-50%); }
+.panel-footer span { color: #718097; font-size: 12px; line-height: 1.5; }
 .field { display: grid; gap: 8px; font-size: 14px; font-weight: 650; }
 .field input, .field textarea, .field select {
   width: 100%;
@@ -122,8 +132,7 @@ button.prompt-card-heading:hover { color: #172033; background: #f2f6fc; }
 .confirmation-dialog-actions button:focus-visible { outline: 3px solid #82a8ff; outline-offset: 2px; }
 .list-empty { padding: 20px; border: 1px dashed #d5ddea; border-radius: 10px; color: #718097; background: #fbfcfe; font-size: 13px; font-weight: 400; text-align: center; }
 
-.form-footer { position: sticky; z-index: 5; bottom: 12px; display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 62px; margin: 0 -8px; padding: 10px 12px; border: 1px solid #e2e8f1; border-radius: 12px; background: rgba(255, 255, 255, .96); box-shadow: 0 8px 24px rgba(24, 44, 81, .12); backdrop-filter: blur(8px); }
-.status { margin: 0; color: #2d6845; font-size: 13px; }
+.status { min-height: 20px; margin: 12px 0 0; color: #2d6845; font-size: 13px; }
 button {
   min-height: 40px;
   padding: 0 17px;
@@ -143,9 +152,11 @@ button:focus-visible { outline: 3px solid #82a8ff; outline-offset: 2px; }
 .privacy-note { margin: 25px 0 0; padding-top: 19px; border-top: 1px solid #edf0f5; color: #738096; font-size: 12px; line-height: 1.6; }
 
 @media (max-width: 540px) {
-  body { padding: 18px 12px; }
+  body { padding: 18px 12px 124px; }
   .settings { padding: 26px 20px 22px; }
   h1 { font-size: 24px; }
+  .settings-tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .settings-tab { min-height: 44px; }
   .section-heading { align-items: flex-start; flex-direction: column; }
   .section-actions { width: 100%; }
   .section-actions button { flex: 1; padding-inline: 8px; }
@@ -161,6 +172,7 @@ button:focus-visible { outline: 3px solid #82a8ff; outline-offset: 2px; }
   .prompt-card-name, .cleanup-match-preview { grid-column: 1; }
   .prompt-card-preview, .cleanup-replacement-preview { grid-column: 1; }
   .prompt-card > summary::after { grid-column: 2; grid-row: 1 / span 3; }
-  .form-footer { margin-inline: -4px; }
-  .form-footer #save-button { flex: none; }
+  .panel-footer { width: calc(100vw - 64px); padding: 10px 12px; }
+  .panel-footer span { display: none; }
+  .panel-footer button { width: 100%; }
 }

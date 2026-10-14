@@ -3,9 +3,12 @@
   globalThis.__selectionAiOverlayInstalled = true;
   const extensionApi = globalThis.quickAiBrowserApi;
 
+  const initialCardWidth = Math.min(800, Math.max(1, window.innerWidth - 32));
+  const initialLeft = Math.max(12, window.innerWidth - initialCardWidth - 12);
   const host = document.createElement("div");
   host.id = "selection-ai-overlay-host";
-  host.style.cssText = "all:initial;position:fixed;z-index:2147483647;top:20px;left:auto;right:12px";
+  // 显式计算左坐标，避免宿主自动宽度影响首次显示时的右侧对齐。
+  host.style.cssText = `all:initial;position:fixed;z-index:2147483647;top:20px;left:${initialLeft}px;right:auto`;
   (document.documentElement || document.body).appendChild(host);
 
   const shadow = host.attachShadow({ mode: "closed" });
@@ -38,6 +41,18 @@
       --selected-bg:#222b38; --selected-border:#3b4b61; --selected-text:#e1e8f2;
       --code-bg:#252d39; --quote-bg:#222b38; --answer-heading-text:#edf1f7; --accent:#8ab4ff; --error:#ff938d;
     }
+    .card[data-theme="mint"] {
+      --card-bg:#f4fbf7; --card-text:#193b30; --muted-text:#557469; --divider:#d8eae1;
+      --soft-bg:#eaf5ef; --control-bg:#fbfefc; --control-border:#cfe2d8;
+      --selected-bg:#e0f2e8; --selected-border:#b8dcca; --selected-text:#21483a;
+      --code-bg:#e6f0ea; --quote-bg:#e8f5ed; --answer-heading-text:#163d30; --accent:#247754; --error:#9c2b20;
+    }
+    .card[data-theme="slate"] {
+      --card-bg:#f2f5f9; --card-text:#253346; --muted-text:#5b6b80; --divider:#d9e1ea;
+      --soft-bg:#e9eff5; --control-bg:#fafbfd; --control-border:#cbd6e2;
+      --selected-bg:#e1ebf5; --selected-border:#bfd0e1; --selected-text:#2c435b;
+      --code-bg:#e5ebf1; --quote-bg:#e7eef6; --answer-heading-text:#20374f; --accent:#416d9c; --error:#9c2b20;
+    }
     .card[hidden] { display: none; }
     .header { display:flex; align-items:center; gap:10px; padding:13px 14px; border-bottom:1px solid var(--divider); cursor:move; user-select:none; }
     .title { flex:1; font-weight:650; font-size:14px; }
@@ -58,7 +73,7 @@
     .settings-label { min-width:56px; }
     .settings-value { min-width:34px; text-align:right; font-variant-numeric:tabular-nums; }
     .font-size-slider { flex:1; min-width:90px; margin:0; accent-color:var(--accent); }
-    .style-options { display:flex; align-items:center; gap:7px; margin-top:9px; }
+    .style-options { display:flex; align-items:center; flex-wrap:wrap; gap:7px; margin-top:9px; }
     .style-option { display:flex; align-items:center; gap:6px; min-height:30px; padding:4px 9px; border:1px solid var(--control-border); border-radius:8px; color:var(--muted-text); background:var(--control-bg); font-size:12px; }
     .style-option[aria-pressed="true"] { color:var(--card-text); border-color:var(--accent); box-shadow:0 0 0 1px var(--accent) inset; }
     .style-option:focus-visible, .font-size-slider:focus-visible { outline:3px solid #82a8ff; outline-offset:2px; }
@@ -66,6 +81,8 @@
     .style-swatch[data-theme-choice="paper"] { background:#fff; }
     .style-swatch[data-theme-choice="warm"] { background:#f2d8aa; }
     .style-swatch[data-theme-choice="dark"] { background:#252d39; }
+    .style-swatch[data-theme-choice="mint"] { background:#b8dcca; }
+    .style-swatch[data-theme-choice="slate"] { background:#bfd0e1; }
     .context-area { flex:none; padding:10px 14px 0; }
     .request-details { padding:7px 9px; border:1px solid var(--divider); border-radius:8px; background:var(--soft-bg); }
     .request-details summary { color:var(--muted-text); font-size:11px; font-weight:550; cursor:pointer; }
@@ -189,7 +206,9 @@
   const styleChoices = [
     { id: "paper", label: "清爽" },
     { id: "warm", label: "暖色" },
-    { id: "dark", label: "深色" }
+    { id: "dark", label: "深色" },
+    { id: "mint", label: "薄荷" },
+    { id: "slate", label: "蓝灰" }
   ];
   const styleButtons = new Map();
   for (const choice of styleChoices) {
@@ -582,7 +601,7 @@
   const saveBounds = () => {
     if (card.hidden) return;
     const rect = card.getBoundingClientRect();
-    const bounds = { width: rect.width, height: rect.height, left: rect.left, top: rect.top };
+    const bounds = { version: 2, width: rect.width, height: rect.height, left: rect.left, top: rect.top };
     clearTimeout(boundsSaveTimer);
     boundsSaveTimer = window.setTimeout(() => {
       extensionApi.storage.local.set({ [boundsStorageKey]: bounds }).catch(() => {});
@@ -609,9 +628,14 @@
     const bounds = stored[boundsStorageKey];
     if (!bounds || ![bounds.width, bounds.height, bounds.left, bounds.top].every(Number.isFinite)) return;
     const { maxWidth, maxHeight } = viewportLimits();
-    card.style.width = `${Math.min(Math.max(300, bounds.width), maxWidth)}px`;
+    const restoredWidth = Math.min(Math.max(300, bounds.width), maxWidth);
+    card.style.width = `${restoredWidth}px`;
     card.style.height = `${Math.min(Math.max(180, bounds.height), maxHeight)}px`;
-    host.style.left = `${Math.min(Math.max(12, bounds.left), Math.max(12, window.innerWidth - maxWidth - 12))}px`;
+    const maxLeft = Math.max(12, window.innerWidth - restoredWidth - 12);
+    // 旧版误用最大宽度限制坐标，恢复时会把所有位置压到最左侧约 20px；迁移这类旧默认位置到右侧。
+    const isLegacyLeftDefault = bounds.version !== 2 && bounds.left <= 20 && bounds.left < maxLeft - 40;
+    const restoredLeft = isLegacyLeftDefault ? maxLeft : Math.min(Math.max(12, bounds.left), maxLeft);
+    host.style.left = `${restoredLeft}px`;
     host.style.right = "auto";
     host.style.top = `${Math.min(Math.max(12, bounds.top), Math.max(12, window.innerHeight - 180 - 12))}px`;
     syncRestoreButtonPosition();

@@ -11,122 +11,155 @@
       <header class="page-header">
         <div class="eyebrow">浏览器扩展</div>
         <h1>快捷AI</h1>
-        <p>配置 AI 服务商和多组提示词。选中文字后，在右键菜单中选择要使用的提示词。</p>
+        <p>选中文字后，从右键菜单选择提示词，将内容发送给当前 AI 服务商。</p>
       </header>
 
+      <nav class="settings-tabs" role="tablist" aria-label="设置分类">
+        <button id="tab-providers" class="settings-tab" type="button" role="tab" aria-selected="true" aria-controls="panel-providers" tabindex="0">AI 服务商</button>
+        <button id="tab-prompts" class="settings-tab" type="button" role="tab" aria-selected="false" aria-controls="panel-prompts" tabindex="-1">提示词</button>
+        <button id="tab-cleanup" class="settings-tab" type="button" role="tab" aria-selected="false" aria-controls="panel-cleanup" tabindex="-1">选中文字清理规则</button>
+        <button id="tab-backup" class="settings-tab" type="button" role="tab" aria-selected="false" aria-controls="panel-backup" tabindex="-1">配置备份</button>
+      </nav>
+
       <form id="settings-form">
-        <section class="provider-section" aria-labelledby="provider-heading">
-          <div class="section-heading">
-            <div class="section-title">
-              <span id="provider-heading">AI 服务商</span>
-              <span id="provider-count" class="list-count"></span>
+        <section id="panel-providers" class="tab-panel" role="tabpanel" aria-labelledby="tab-providers">
+          <section class="provider-section" aria-labelledby="provider-heading">
+            <div class="section-heading">
+              <div class="section-title">
+                <span id="provider-heading">AI 服务商</span>
+                <span id="provider-count" class="list-count"></span>
+              </div>
+              <div class="section-actions">
+                <button id="add-provider" class="secondary-button" type="button">添加服务商</button>
+                <button id="remove-provider" class="remove-button" type="button">删除当前服务商</button>
+              </div>
+            </div>
+            <label class="field provider-picker">
+              <span>当前使用的 AI 服务商</span>
+              <select id="provider-select" aria-label="当前使用的 AI 服务商"></select>
+            </label>
+            <label class="field">
+              <span>服务商名称</span>
+              <input id="provider-name" type="text" required maxlength="60" spellcheck="false" placeholder="例如：工作用 AI">
+            </label>
+            <label class="field">
+              <span>API Key</span>
+              <input id="api-key" type="password" autocomplete="off" spellcheck="false" placeholder="sk-…">
+              <small>仅保存在此浏览器配置中，并由扩展后台用于 API 请求。</small>
+            </label>
+            <label class="field">
+              <span>模型名称</span>
+              <input id="model" name="model" type="text" required spellcheck="false" placeholder="gpt-6-luna">
+            </label>
+            <label class="field">
+              <span>API Base URL</span>
+              <input id="base-url" name="baseUrl" type="url" required spellcheck="false" placeholder="https://api.openai.com/v1">
+              <small>填写提供 OpenAI 兼容 Chat Completions 接口的服务商 API 根地址，扩展会调用其 /chat/completions 接口。保存时会请求访问该站点的权限。</small>
+              <small id="http-warning" class="warning" hidden>HTTP 不加密传输，API Key 和选中文字可能被网络中的其他人读取。只对可信的本机或内网服务使用。</small>
+            </label>
+          </section>
+          <div class="panel-footer">
+            <span>只保存 AI 服务商及当前选中项。</span>
+            <button id="save-providers" type="button">保存服务商配置</button>
+          </div>
+        </section>
+
+        <section id="panel-prompts" class="tab-panel" role="tabpanel" aria-labelledby="tab-prompts" hidden>
+          <section class="field prompt-field" aria-labelledby="prompts-heading">
+            <div class="section-heading">
+              <div class="section-title">
+                <span id="prompts-heading">提示词</span>
+                <span id="prompt-count" class="list-count"></span>
+              </div>
+              <div class="section-actions">
+                <button id="toggle-prompts" class="secondary-button" type="button">全部展开</button>
+                <button id="add-prompt" class="secondary-button" type="button">添加提示词</button>
+              </div>
+            </div>
+            <label class="list-search" hidden>
+              <span class="visually-hidden">搜索提示词</span>
+              <input id="prompt-search" type="search" autocomplete="off" placeholder="搜索提示词名称或内容">
+            </label>
+            <div id="prompts-list" class="prompts-list"></div>
+            <small>禁用的提示词不会出现在右键菜单。修改后点击下方按钮保存。</small>
+          </section>
+          <div class="panel-footer">
+            <span>只保存提示词列表和启用状态。</span>
+            <button id="save-prompts" type="button">保存提示词</button>
+          </div>
+        </section>
+
+        <section id="panel-cleanup" class="tab-panel" role="tabpanel" aria-labelledby="tab-cleanup" hidden>
+          <section class="field cleanup-field" aria-labelledby="cleanup-heading">
+            <div class="section-heading">
+              <div class="section-title">
+                <span id="cleanup-heading">选中文字清理规则</span>
+                <span id="cleanup-rule-count" class="list-count"></span>
+              </div>
+              <div class="section-actions">
+                <button id="toggle-cleanup-rules" class="secondary-button" type="button">全部展开</button>
+                <button id="add-cleanup-rule" class="secondary-button" type="button">添加规则</button>
+              </div>
+            </div>
+            <label class="list-search" hidden>
+              <span class="visually-hidden">搜索清理规则</span>
+              <input id="cleanup-rule-search" type="search" autocomplete="off" placeholder="搜索匹配文字或替换方式">
+            </label>
+            <div id="cleanup-rules-list" class="prompts-list"></div>
+            <small>按列表顺序区分大小写地匹配文字，并替换所有匹配项。可替换为空格、换行或自定义内容；清理后的题目会显示并发送给 AI。</small>
+          </section>
+          <div class="panel-footer">
+            <span>只保存选中文字清理规则。</span>
+            <button id="save-cleanup" type="button">保存清理规则</button>
+          </div>
+        </section>
+
+        <section id="panel-backup" class="tab-panel" role="tabpanel" aria-labelledby="tab-backup" hidden>
+          <section class="transfer-section" aria-labelledby="transfer-heading">
+            <div>
+              <h2 id="transfer-heading">配置备份</h2>
+              <p>导出当前页面中的提示词、清理规则和服务商配置，不包含 API Key。导入后会载入页面，分别到对应选项卡保存才会生效。</p>
             </div>
             <div class="section-actions">
-              <button id="add-provider" class="secondary-button" type="button">添加服务商</button>
-              <button id="remove-provider" class="remove-button" type="button">删除当前服务商</button>
+              <button id="export-settings" class="secondary-button" type="button">导出配置</button>
+              <button id="import-settings-button" class="secondary-button" type="button">导入配置</button>
+              <input id="import-settings-file" class="visually-hidden" type="file" accept="application/json,.json">
             </div>
-          </div>
-          <label class="field provider-picker">
-            <span>当前使用的 AI 服务商</span>
-            <select id="provider-select" aria-label="当前使用的 AI 服务商"></select>
-          </label>
-          <label class="field">
-            <span>服务商名称</span>
-            <input id="provider-name" type="text" required maxlength="60" spellcheck="false" placeholder="例如：工作用 AI">
-          </label>
-
-          <label class="field">
-            <span>API Key</span>
-            <input id="api-key" type="password" autocomplete="off" spellcheck="false" placeholder="sk-…">
-            <small>仅保存在此浏览器配置中，并由扩展后台用于 API 请求。</small>
-          </label>
-
-          <label class="field">
-            <span>模型名称</span>
-            <input id="model" name="model" type="text" required spellcheck="false" placeholder="gpt-6-luna">
-          </label>
-
-          <label class="field">
-            <span>API Base URL</span>
-            <input id="base-url" name="baseUrl" type="url" required spellcheck="false" placeholder="https://api.openai.com/v1">
-            <small>填写提供 OpenAI 兼容 Chat Completions 接口的服务商 API 根地址，扩展会调用其 /chat/completions 接口。保存时会请求访问该站点的权限。</small>
-            <small id="http-warning" class="warning" hidden>HTTP 不加密传输，API Key 和选中文字可能被网络中的其他人读取。只对可信的本机或内网服务使用。</small>
-          </label>
+          </section>
+          <p class="backup-note">API Key 不会写入备份文件。导入后，已有服务商若 ID 相同会保留本机 API Key；新增服务商需要重新填写。</p>
         </section>
-
-        <section class="field prompt-field" aria-labelledby="prompts-heading">
-          <div class="section-heading">
-            <div class="section-title">
-              <span id="prompts-heading">提示词</span>
-              <span id="prompt-count" class="list-count"></span>
-            </div>
-            <div class="section-actions">
-              <button id="toggle-prompts" class="secondary-button" type="button">全部展开</button>
-              <button id="add-prompt" class="secondary-button" type="button">添加提示词</button>
-            </div>
-          </div>
-          <label class="list-search" hidden>
-            <span class="visually-hidden">搜索提示词</span>
-            <input id="prompt-search" type="search" autocomplete="off" placeholder="搜索提示词名称或内容">
-          </label>
-          <div id="prompts-list" class="prompts-list"></div>
-          <small>右键选中文字后，在“快捷AI”子菜单中手动选择要使用的提示词。</small>
-        </section>
-
-        <section class="field cleanup-field" aria-labelledby="cleanup-heading">
-          <div class="section-heading">
-            <div class="section-title">
-              <span id="cleanup-heading">选中文字清理规则</span>
-              <span id="cleanup-rule-count" class="list-count"></span>
-            </div>
-            <div class="section-actions">
-              <button id="toggle-cleanup-rules" class="secondary-button" type="button">全部展开</button>
-              <button id="add-cleanup-rule" class="secondary-button" type="button">添加规则</button>
-            </div>
-          </div>
-          <label class="list-search" hidden>
-            <span class="visually-hidden">搜索清理规则</span>
-            <input id="cleanup-rule-search" type="search" autocomplete="off" placeholder="搜索匹配文字或替换方式">
-          </label>
-          <div id="cleanup-rules-list" class="prompts-list"></div>
-          <small>按列表顺序区分大小写地匹配文字，并替换所有匹配项。可替换为空格、换行或自定义内容；清理后的题目会显示并发送给 AI。</small>
-        </section>
-
-        <section class="transfer-section" aria-labelledby="transfer-heading">
-          <div>
-            <h2 id="transfer-heading">配置备份</h2>
-            <p>导出提示词、清理规则和服务商配置，不包含 API Key。导入后可先检查，点击“保存设置”才会应用。</p>
-          </div>
-          <div class="section-actions">
-            <button id="export-settings" class="secondary-button" type="button">导出配置</button>
-            <button id="import-settings-button" class="secondary-button" type="button">导入配置</button>
-            <input id="import-settings-file" class="visually-hidden" type="file" accept="application/json,.json">
-          </div>
-        </section>
-
-        <div class="form-footer">
-          <p id="save-status" class="status" role="status" aria-live="polite"></p>
-          <button id="save-button" type="submit">保存设置</button>
-        </div>
       </form>
 
-      <dialog id="delete-prompt-dialog" class="confirmation-dialog" aria-labelledby="delete-prompt-title" aria-describedby="delete-prompt-message">
-        <form method="dialog" class="confirmation-dialog-content">
-          <h2 id="delete-prompt-title">删除提示词？</h2>
-          <p id="delete-prompt-message"></p>
-          <label class="confirm-skip-today">
-            <input id="skip-prompt-delete-today" type="checkbox">
-            <span>今日不再提示</span>
-          </label>
-          <div class="confirmation-dialog-actions">
-            <button class="secondary-button" type="submit" value="cancel">取消</button>
-            <button class="remove-button" type="submit" value="confirm">确认删除</button>
-          </div>
-        </form>
-      </dialog>
-
+      <p id="save-status" class="status" role="status" aria-live="polite"></p>
       <p class="privacy-note">每次请求只发送所选提示词和清理后的选中文字，不会读取整页内容。</p>
     </main>
+
+    <dialog id="delete-prompt-dialog" class="confirmation-dialog" aria-labelledby="delete-prompt-title" aria-describedby="delete-prompt-message">
+      <form method="dialog" class="confirmation-dialog-content">
+        <h2 id="delete-prompt-title">删除提示词？</h2>
+        <p id="delete-prompt-message"></p>
+        <label class="confirm-skip-today">
+          <input id="skip-prompt-delete-today" type="checkbox">
+          <span>今日不再提示</span>
+        </label>
+        <div class="confirmation-dialog-actions">
+          <button class="secondary-button" type="submit" value="cancel">取消</button>
+          <button class="remove-button" type="submit" value="confirm">确认删除</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="delete-provider-dialog" class="confirmation-dialog" aria-labelledby="delete-provider-title" aria-describedby="delete-provider-message">
+      <form method="dialog" class="confirmation-dialog-content">
+        <h2 id="delete-provider-title">删除 AI 服务商？</h2>
+        <p id="delete-provider-message"></p>
+        <div class="confirmation-dialog-actions">
+          <button class="secondary-button" type="submit" value="cancel">取消</button>
+          <button class="remove-button" type="submit" value="confirm">确认删除</button>
+        </div>
+      </form>
+    </dialog>
+
     <script type="module" src="options.js"></script>
   </body>
 </html>
