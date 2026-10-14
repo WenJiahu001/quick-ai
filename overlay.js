@@ -22,8 +22,8 @@
       --code-bg:#f1f4f8; --quote-bg:#f7f9fc; --answer-heading-text:#172033;
       --answer-font-size:16px; --accent:#2359d6; --error:#9c2b20;
       box-sizing: border-box; width: min(800px, calc(100vw - 32px)); height: min(640px, calc(78vh - 24px));
-      min-width: min(300px, calc(100vw - 32px)); min-height: min(240px, calc(100vh - 40px));
-      max-width: calc(100vw - 32px); max-height: calc(100vh - 40px); resize: both;
+      position:relative; min-width: min(300px, calc(100vw - 32px)); min-height: min(240px, calc(100vh - 40px));
+      max-width: calc(100vw - 32px); max-height: calc(100vh - 40px);
       display: flex; flex-direction: column; overflow: hidden; color: var(--card-text);
       background: var(--card-bg); border: 1px solid var(--divider); border-radius: 14px;
       box-shadow: 0 16px 48px rgba(12, 24, 48, .24);
@@ -124,6 +124,18 @@
     .retry-button:disabled { opacity:.6; cursor:wait; }
     .hide-action-button { min-width:108px; min-height:40px; border:1px solid var(--control-border); border-radius:9px; padding:7px 18px; color:var(--card-text); background:var(--control-bg); font-weight:600; }
     .hide-action-button:hover { filter:brightness(.96); }
+    .resize-handle { position:absolute; z-index:5; display:grid; place-items:center; width:24px; min-width:24px; height:24px; min-height:24px; padding:0; border:0; border-radius:0; color:var(--muted-text); background:transparent; touch-action:none; }
+    .resize-handle:hover { background:transparent; }
+    .resize-handle:focus-visible { outline:2px solid var(--accent); outline-offset:-3px; }
+    .resize-handle::after { width:9px; height:9px; border-color:currentColor; border-style:solid; content:""; opacity:.6; }
+    .resize-handle[data-corner="top-left"] { top:0; left:0; cursor:nwse-resize; }
+    .resize-handle[data-corner="top-left"]::after { border-width:1.5px 0 0 1.5px; }
+    .resize-handle[data-corner="top-right"] { top:0; right:0; cursor:nesw-resize; }
+    .resize-handle[data-corner="top-right"]::after { border-width:1.5px 1.5px 0 0; }
+    .resize-handle[data-corner="bottom-left"] { bottom:0; left:0; cursor:nesw-resize; }
+    .resize-handle[data-corner="bottom-left"]::after { border-width:0 0 1.5px 1.5px; }
+    .resize-handle[data-corner="bottom-right"] { right:0; bottom:0; cursor:nwse-resize; }
+    .resize-handle[data-corner="bottom-right"]::after { border-width:0 1.5px 1.5px 0; }
     .error { color:var(--error); }
     .spinner { width:14px; height:14px; border:2px solid var(--control-border); border-top-color:var(--accent); border-radius:50%; animation:spin .8s linear infinite; }
     @keyframes spin { to { transform:rotate(360deg); } }
@@ -298,6 +310,23 @@
   settingsButton.textContent = "关闭";
   actions.append(retryButton, hideActionButton, settingsButton);
   card.append(header, displaySettings, contextArea, readingArea, status, actions);
+
+  const resizeCorners = [
+    ["top-left", "左上角调整大小"],
+    ["top-right", "右上角调整大小"],
+    ["bottom-left", "左下角调整大小"],
+    ["bottom-right", "右下角调整大小"]
+  ];
+  const resizeHandles = resizeCorners.map(([corner, label]) => {
+    const handle = document.createElement("button");
+    handle.className = "resize-handle";
+    handle.type = "button";
+    handle.dataset.corner = corner;
+    handle.setAttribute("aria-label", label);
+    handle.title = label;
+    card.append(handle);
+    return handle;
+  });
   shadow.append(style, card, restoreButton);
 
   let currentRequestId = null;
@@ -570,6 +599,7 @@
   const boundsStorageKey = "quickAiOverlayBounds";
   let boundsSaveTimer = 0;
   let activeDrag = null;
+  let activeResize = null;
 
   const viewportLimits = () => ({
     maxWidth: Math.max(1, window.innerWidth - 32),
@@ -600,13 +630,106 @@
 
   const saveBounds = () => {
     if (card.hidden) return;
-    const rect = card.getBoundingClientRect();
-    const bounds = { version: 2, width: rect.width, height: rect.height, left: rect.left, top: rect.top };
     clearTimeout(boundsSaveTimer);
     boundsSaveTimer = window.setTimeout(() => {
+      if (card.hidden) return;
+      const rect = card.getBoundingClientRect();
+      const bounds = { version: 2, width: rect.width, height: rect.height, left: rect.left, top: rect.top };
       extensionApi.storage.local.set({ [boundsStorageKey]: bounds }).catch(() => {});
     }, 120);
   };
+
+  const resizeFromCorner = (corner, start, deltaX, deltaY) => {
+    const { maxWidth, maxHeight } = viewportLimits();
+    const minWidth = Math.min(300, maxWidth);
+    const minHeight = Math.min(240, maxHeight);
+    const minX = 12;
+    const minY = 12;
+    const maxX = Math.max(minX, window.innerWidth - 12);
+    const maxY = Math.max(minY, window.innerHeight - 12);
+    let left = start.left;
+    let right = start.right;
+    let top = start.top;
+    let bottom = start.bottom;
+
+    if (corner.includes("left")) {
+      const lower = Math.max(minX, right - maxWidth);
+      const upper = Math.max(lower, right - minWidth);
+      left = Math.min(Math.max(start.left + deltaX, lower), upper);
+    } else {
+      const lower = left + minWidth;
+      const upper = Math.max(lower, Math.min(maxX, left + maxWidth));
+      right = Math.min(Math.max(start.right + deltaX, lower), upper);
+    }
+
+    if (corner.includes("top")) {
+      const lower = Math.max(minY, bottom - maxHeight);
+      const upper = Math.max(lower, bottom - minHeight);
+      top = Math.min(Math.max(start.top + deltaY, lower), upper);
+    } else {
+      const lower = top + minHeight;
+      const upper = Math.max(lower, Math.min(maxY, top + maxHeight));
+      bottom = Math.min(Math.max(start.bottom + deltaY, lower), upper);
+    }
+
+    host.style.left = `${left}px`;
+    host.style.right = "auto";
+    host.style.top = `${top}px`;
+    card.style.width = `${right - left}px`;
+    card.style.height = `${bottom - top}px`;
+    saveBounds();
+  };
+
+  for (const handle of resizeHandles) {
+    handle.addEventListener("pointerdown", (event) => {
+      if (event.button !== 0) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const rect = card.getBoundingClientRect();
+      activeResize = {
+        pointerId: event.pointerId,
+        corner: handle.dataset.corner,
+        startX: event.clientX,
+        startY: event.clientY,
+        left: rect.left,
+        right: rect.right,
+        top: rect.top,
+        bottom: rect.bottom
+      };
+      handle.setPointerCapture(event.pointerId);
+    });
+    handle.addEventListener("pointermove", (event) => {
+      if (!activeResize || activeResize.pointerId !== event.pointerId) return;
+      event.preventDefault();
+      const start = activeResize;
+      // 使用按下时的边界和位移计算，避免连续布局测量造成抖动。
+      const deltaX = event.clientX - start.startX;
+      const deltaY = event.clientY - start.startY;
+      resizeFromCorner(start.corner, start, deltaX, deltaY);
+    });
+    const finishResize = (event) => {
+      if (activeResize?.pointerId !== event.pointerId) return;
+      activeResize = null;
+      saveBounds();
+    };
+    handle.addEventListener("pointerup", finishResize);
+    handle.addEventListener("pointercancel", finishResize);
+    handle.addEventListener("lostpointercapture", finishResize);
+    handle.addEventListener("keydown", (event) => {
+      const step = event.shiftKey ? 50 : 10;
+      const deltas = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] };
+      const delta = deltas[event.key];
+      if (!delta) return;
+      event.preventDefault();
+      const rect = card.getBoundingClientRect();
+      resizeFromCorner(handle.dataset.corner, {
+        left: rect.left,
+        right: rect.right,
+        top: rect.top,
+        bottom: rect.bottom
+      }, delta[0], delta[1]);
+    });
+  }
 
   const constrainSize = () => {
     if (card.hidden) return;
@@ -620,7 +743,7 @@
     saveBounds();
   };
 
-  // 原生缩放手柄在部分页面缩放比例下可能越过 max-width/max-height，观察并校正最终尺寸。
+  // 观察尺寸变化并校正边界，确保不同页面缩放比例下浮层都留在视口内。
   const resizeObserver = new ResizeObserver(constrainSize);
   resizeObserver.observe(card);
 
