@@ -1,0 +1,9 @@
+Streaming Markdown parser
+
+Upstream: https://github.com/thetarnav/streaming-markdown
+Source revision: 6beb92d991ed5a16f62cdfefac739b6eee45555f
+License: MIT (see streaming-markdown.LICENSE)
+
+The upstream ES module exports were wrapped in a guarded global namespace so
+the parser can be injected as a classic Manifest V3 script. The extension uses
+a custom DOM renderer to validate links and avoid loading remote images.

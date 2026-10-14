@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="590" viewBox="0 0 960 590" role="img" aria-labelledby="title desc">
+  <title id="title">快捷AI 服务商配置示意图</title>
+  <desc id="desc">配置服务商名称、掩码 API Key、模型名称和示例 API Base URL，并设置提示词。</desc>
+  <rect width="960" height="590" rx="20" fill="#f3f6fb"/>
+  <rect x="30" y="24" width="900" height="542" rx="16" fill="#fff" stroke="#d9e1ee"/>
+  <text x="64" y="70" fill="#25324a" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="24" font-weight="700">AI 服务商</text>
+  <text x="64" y="99" fill="#748096" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="15">添加接口兼容 OpenAI Chat Completions 的服务</text>
+  <text x="64" y="145" fill="#35425a" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="15" font-weight="700">服务名称</text>
+  <rect x="64" y="158" width="832" height="47" rx="8" fill="#fff" stroke="#cbd6e7"/>
+  <text x="82" y="188" fill="#31405a" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="16">默认服务</text>
+  <text x="64" y="243" fill="#35425a" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="15" font-weight="700">API Key</text>
+  <rect x="64" y="256" width="832" height="47" rx="8" fill="#fff" stroke="#cbd6e7"/>
+  <text x="82" y="286" fill="#31405a" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="17">••••••••••••••••••••</text>
+  <text x="64" y="326" fill="#748096" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="13">仅保存在当前浏览器配置中，由扩展后台用于 API 请求</text>
+  <text x="64" y="365" fill="#35425a" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="15" font-weight="700">模型名称</text>
+  <rect x="64" y="378" width="832" height="47" rx="8" fill="#fff" stroke="#cbd6e7"/>
+  <text x="82" y="408" fill="#31405a" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="16">your-model</text>
+  <text x="64" y="464" fill="#35425a" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="15" font-weight="700">API Base URL</text>
+  <rect x="64" y="477" width="832" height="47" rx="8" fill="#fff" stroke="#cbd6e7"/>
+  <text x="82" y="507" fill="#31405a" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="16">https://api.example.com/v1</text>
+  <rect x="64" y="538" width="832" height="1" fill="#edf0f6"/>
+  <text x="64" y="558" fill="#738097" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="13">示意图：请在扩展选项页填写你自己的服务商信息和 API Key</text>
+</svg>

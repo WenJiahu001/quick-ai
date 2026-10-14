@@ -10,9 +10,11 @@ export const DEFAULT_SETTINGS = Object.freeze({
   baseUrl: "https://api.openai.com/v1"
 });
 
+export const DEFAULT_PROVIDER_ID = "provider-default";
+
 export function normalizeBaseUrl(value) {
   const raw = String(value ?? "").trim();
-  if (!raw) throw new Error("请填写 AI 服务 API Base URL。");
+  if (!raw) throw new Error("请填写 AI 服务商 API Base URL。");
 
   let url;
   try {
@@ -48,11 +50,81 @@ export function normalizePrompts(value, legacyPrompt) {
       if (!id || seenIds.has(id)) id = `prompt-${index}`;
       while (seenIds.has(id)) id = `${id}-copy`;
       seenIds.add(id);
-      return { id, name, content };
+      return {
+        id,
+        name,
+        content,
+        favorite: item.favorite === true,
+        enabled: item.enabled !== false
+      };
     })
     .filter((item) => item.name && item.content);
 
-  return prompts.length ? prompts : DEFAULT_PROMPTS.map((prompt) => ({ ...prompt }));
+  return prompts.length ? prompts : DEFAULT_PROMPTS.map((prompt) => ({ ...prompt, enabled: true }));
+}
+
+export function normalizeProviders(value, legacySettings = {}) {
+  const fallback = {
+    id: DEFAULT_PROVIDER_ID,
+    name: "默认服务商",
+    apiKey: String(legacySettings.apiKey ?? DEFAULT_SETTINGS.apiKey),
+    model: String(legacySettings.model ?? DEFAULT_SETTINGS.model),
+    baseUrl: String(legacySettings.baseUrl || legacySettings.OPENAI_BASE_URL || DEFAULT_SETTINGS.baseUrl)
+  };
+  const source = Array.isArray(value) && value.length ? value : [fallback];
+  const seenIds = new Set();
+  return source
+    .filter((item) => item && typeof item === "object")
+    .map((item, index) => {
+      let id = String(item.id ?? "").trim();
+      if (!id || seenIds.has(id)) id = `provider-${index + 1}`;
+      while (seenIds.has(id)) id = `${id}-copy`;
+      seenIds.add(id);
+      const configuredName = String(item.name ?? "").trim();
+      return {
+        id,
+        name: id === DEFAULT_PROVIDER_ID && configuredName === "默认服务"
+          ? "默认服务商"
+          : configuredName || `服务商 ${index + 1}`,
+        apiKey: String(item.apiKey ?? ""),
+        model: String(item.model ?? "").trim(),
+        baseUrl: String(item.baseUrl ?? "").trim()
+      };
+    });
+}
+
+export function getActiveProvider(providers, providerId) {
+  return providers.find((provider) => provider.id === providerId) || providers[0];
+}
+
+export function normalizeCleanupRules(value) {
+  if (!Array.isArray(value)) return [];
+
+  const seenIds = new Set();
+  return value
+    .filter((rule) => rule && typeof rule === "object")
+    .map((rule, index) => {
+      let id = String(rule.id ?? "").trim();
+      if (!id || seenIds.has(id)) id = `cleanup-${index}`;
+      while (seenIds.has(id)) id = `${id}-copy`;
+      seenIds.add(id);
+      return {
+        id,
+        find: String(rule.find ?? ""),
+        replacement: String(rule.replacement ?? "")
+      };
+    })
+    .filter((rule) => rule.find.trim());
+}
+
+export function applyCleanupRules(value, rules) {
+  let cleanedText = String(value ?? "");
+  for (const rule of rules) {
+    if (!rule.find) continue;
+    // split/join 进行字面替换，避免把用户配置内容解释成正则或替换表达式。
+    cleanedText = cleanedText.split(rule.find).join(rule.replacement);
+  }
+  return cleanedText;
 }
 
 export function baseUrlOriginPattern(baseUrl) {

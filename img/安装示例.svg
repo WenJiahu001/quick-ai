@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="430" viewBox="0 0 960 430" role="img" aria-labelledby="title desc">
+  <title id="title">浏览器扩展本地加载示意图</title>
+  <desc id="desc">在 Chromium 浏览器的扩展管理页面启用开发者模式并加载解压后的扩展目录。</desc>
+  <rect width="960" height="430" rx="20" fill="#f3f6fb"/>
+  <rect x="28" y="25" width="904" height="380" rx="16" fill="#fff" stroke="#d9e1ee"/>
+  <rect x="28" y="25" width="904" height="62" rx="16" fill="#f8faff"/>
+  <path d="M28 71h904" stroke="#e5eaf2"/>
+  <circle cx="58" cy="56" r="7" fill="#e77979"/>
+  <circle cx="82" cy="56" r="7" fill="#eac26a"/>
+  <circle cx="106" cy="56" r="7" fill="#71c59a"/>
+  <text x="145" y="63" fill="#263247" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="21" font-weight="700">扩展管理</text>
+  <text x="68" y="137" fill="#25324a" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="25" font-weight="700">管理扩展</text>
+  <text x="68" y="178" fill="#68758a" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="16">启用开发者模式，然后从本地目录加载扩展</text>
+  <text x="682" y="132" fill="#4f5e75" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="16">开发者模式</text>
+  <rect x="820" y="108" width="58" height="30" rx="15" fill="#2463eb"/>
+  <circle cx="862" cy="123" r="11" fill="#fff"/>
+  <rect x="68" y="212" width="824" height="145" rx="13" fill="#fbfcff" stroke="#e2e8f1"/>
+  <text x="96" y="252" fill="#27344a" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="19" font-weight="700">快捷AI</text>
+  <text x="96" y="283" fill="#748096" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="15">选择打包后解压的 Chromium 扩展目录</text>
+  <rect x="633" y="235" width="229" height="56" rx="10" fill="#245fe5"/>
+  <text x="747" y="270" text-anchor="middle" fill="#fff" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="17" font-weight="700">加载解压缩的扩展</text>
+  <rect x="89" y="316" width="14" height="14" rx="7" fill="#22a06b"/>
+  <path d="m93 323 3 3 6-7" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="114" y="329" fill="#607087" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="14">Edge、Chrome、Brave、Vivaldi 和 Opera 的入口名称可能略有不同</text>
+</svg>
