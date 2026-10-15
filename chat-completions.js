@@ -4,7 +4,7 @@ import { chatCompletionsEndpoint } from "./config.js";
  * 请求 OpenAI 兼容的 Chat Completions 接口，并逐段交付模型文本。
  * 标签页消息、请求生命周期和超时由后台协调器负责。
  */
-export async function streamChatCompletion({ baseUrl, apiKey, model, systemPrompt, userText, signal, onText }) {
+export async function streamChatCompletion({ baseUrl, apiKey, model, systemPrompt, messages, signal, onText }) {
   let response;
   try {
     response = await fetch(chatCompletionsEndpoint(baseUrl), {
@@ -18,7 +18,7 @@ export async function streamChatCompletion({ baseUrl, apiKey, model, systemPromp
         model: String(model).trim(),
         messages: [
           { role: "system", content: systemPrompt },
-          { role: "user", content: userText }
+          ...messages
         ],
         stream: true
       }),
@@ -34,7 +34,11 @@ export async function streamChatCompletion({ baseUrl, apiKey, model, systemPromp
 
   await readEventStream(response.body, async (event) => {
     if (event.error) {
-      throw new Error(event.error?.message || "模型生成失败，请稍后重试。");
+      const detail = event.error?.message || "模型生成失败，请稍后重试。";
+      const code = event.error?.code || event.error?.type || "";
+      throw new Error(isContextLimitError(code, detail)
+        ? `${detail} 请重新选择题目开启新对话。`
+        : detail);
     }
 
     const text = extractDeltaText(event.choices?.[0]?.delta?.content);
@@ -115,9 +119,11 @@ async function readEventStream(body, onEvent, signal) {
 
 async function describeHttpError(response) {
   let detail = "";
+  let code = "";
   try {
     const body = await response.json();
     detail = body?.error?.message || "";
+    code = body?.error?.code || body?.error?.type || "";
   } catch {
     // 兼容服务商可能返回非 JSON 错误正文的情况。
   }
@@ -125,5 +131,12 @@ async function describeHttpError(response) {
   if (response.status === 401) return "API Key 无效或已失效，请检查扩展设置。";
   if (response.status === 429) return "请求次数或额度已达限制（429），请稍后重试并检查 API 额度。";
   if (response.status === 403) return `API 拒绝了请求（403）。${detail}`;
+  if (isContextLimitError(code, detail)) {
+    return `${detail || "对话超出模型上下文限制。"} 请重新选择题目开启新对话。`;
+  }
   return detail || `API 请求失败（HTTP ${response.status}）。`;
+}
+
+function isContextLimitError(code, detail) {
+  return /context.?length|maximum context|too many tokens|prompt.{0,20}too long/i.test(`${code} ${detail}`);
 }

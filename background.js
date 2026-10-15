@@ -67,6 +67,20 @@ extensionApi.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return;
   }
 
+  if (message?.type === "FOLLOWUP_REQUEST") {
+    const tabId = sender.tab?.id;
+    const requestId = String(message.requestId ?? "");
+    if (tabId && requestId && requestId.length <= 100) {
+      void beginFollowupRequest(
+        tabId,
+        requestId,
+        String(message.systemPrompt ?? ""),
+        message.messages
+      );
+    }
+    return;
+  }
+
   if (message?.type === "CANCEL_REQUEST") {
     const request = activeRequests.get(message.requestId);
     if (request && request.tabId === sender.tab?.id) request.controller.abort();
@@ -231,11 +245,6 @@ async function beginRequest(tabId, selectedText, promptId) {
 
     const stored = await extensionApi.storage.local.get(null);
     if (controller.signal.aborted || !isCurrentRequest(tabId, requestId)) return;
-    const providers = normalizeProviders(stored.providers, stored);
-    const settings = getActiveProvider(providers, stored.activeProviderId) || {
-      ...DEFAULT_SETTINGS,
-      baseUrl: stored.baseUrl || stored.OPENAI_BASE_URL || DEFAULT_SETTINGS.baseUrl
-    };
     const cleanedSelectedText = applyCleanupRules(selectedText, normalizeCleanupRules(stored.cleanupRules));
     const prompts = normalizePrompts(stored.prompts, stored.prompt);
     const selectedPrompt = prompts.find((prompt) => prompt.id === promptId && prompt.enabled);
@@ -275,53 +284,28 @@ async function beginRequest(tabId, selectedText, promptId) {
       return;
     }
 
-    if (!String(settings.apiKey).trim()) {
-      await sendToTab(tabId, {
-        type: "SHOW_ERROR",
-        requestId,
-        message: "尚未设置 API Key。请先在扩展设置中填写。",
-        canOpenSettings: true
-      });
-      return;
-    }
-    if (!String(settings.model).trim()) {
-      await sendToTab(tabId, {
-        type: "SHOW_ERROR",
-        requestId,
-        message: "模型名称为空，请检查扩展设置。",
-        canOpenSettings: true
-      });
-      return;
-    }
-
-    let baseUrl;
     try {
-      baseUrl = normalizeBaseUrl(settings.baseUrl);
-      const permission = baseUrlOriginPattern(baseUrl);
-      const allowed = await extensionApi.permissions.contains({ origins: [permission] });
+      const { settings, baseUrl } = await resolveRequestConfiguration(tabId, stored, requestId, controller.signal);
       if (controller.signal.aborted || !isCurrentRequest(tabId, requestId)) return;
-      if (!allowed) {
-        throw new Error("尚未授权访问此 API 地址。请打开扩展设置并重新保存，以授予该站点访问权限。");
-      }
+      await streamResponse({
+        tabId,
+        requestId,
+        systemPrompt: selectedPrompt.content,
+        messages: [{ role: "user", content: cleanedSelectedText }],
+        settings,
+        baseUrl,
+        signal: controller.signal,
+        isFollowup: false
+      });
     } catch (error) {
+      if (error?.name === "AbortError") return;
       await sendToTab(tabId, {
         type: "SHOW_ERROR",
         requestId,
-        message: error.message || "Base URL 配置无效。",
-        canOpenSettings: true
+        message: error.message || "请求失败，请稍后重试。",
+        canOpenSettings: Boolean(error.canOpenSettings)
       });
-      return;
     }
-
-    await streamResponse({
-      tabId,
-      requestId,
-      selectedText: cleanedSelectedText,
-      selectedPrompt,
-      settings,
-      baseUrl,
-      signal: controller.signal
-    });
   } catch (error) {
     if (error?.name !== "AbortError") {
       const delivered = await sendToTab(tabId, {
@@ -335,6 +319,105 @@ async function beginRequest(tabId, selectedText, promptId) {
     const current = activeRequests.get(tabId);
     if (current?.requestId === requestId) activeRequests.delete(tabId);
   }
+}
+
+async function beginFollowupRequest(tabId, requestId, systemPrompt, rawMessages) {
+  const previous = activeRequests.get(tabId);
+  previous?.controller.abort();
+
+  const controller = new AbortController();
+  activeRequests.set(tabId, { requestId, tabId, controller });
+
+  try {
+    await ensureOverlay(tabId);
+    if (controller.signal.aborted || !isCurrentRequest(tabId, requestId)) return;
+    await sendToTab(tabId, { type: "FOLLOWUP_LOADING", requestId });
+
+    const messages = normalizeConversationMessages(rawMessages);
+    if (!messages) {
+      await sendToTab(tabId, {
+        type: "SHOW_TURN_ERROR",
+        requestId,
+        message: "对话上下文无效，请重新选择题目开启新对话。"
+      });
+      return;
+    }
+
+    const stored = await extensionApi.storage.local.get(null);
+    if (controller.signal.aborted || !isCurrentRequest(tabId, requestId)) return;
+    const { settings, baseUrl } = await resolveRequestConfiguration(tabId, stored, requestId, controller.signal);
+    if (controller.signal.aborted || !isCurrentRequest(tabId, requestId)) return;
+
+    await streamResponse({
+      tabId,
+      requestId,
+      systemPrompt,
+      messages,
+      settings,
+      baseUrl,
+      signal: controller.signal,
+      isFollowup: true
+    });
+  } catch (error) {
+    if (error?.name !== "AbortError") {
+      await sendToTab(tabId, {
+        type: "SHOW_TURN_ERROR",
+        requestId,
+        message: error.message || "追问失败，请稍后重试。",
+        canOpenSettings: Boolean(error.canOpenSettings)
+      }).catch(() => {});
+    }
+  } finally {
+    const current = activeRequests.get(tabId);
+    if (current?.requestId === requestId) activeRequests.delete(tabId);
+  }
+}
+
+function normalizeConversationMessages(value) {
+  if (!Array.isArray(value) || value.length === 0 || value.length % 2 === 0) return null;
+  const messages = [];
+  for (let index = 0; index < value.length; index++) {
+    const message = value[index];
+    const expectedRole = index % 2 === 0 ? "user" : "assistant";
+    if (message?.role !== expectedRole || typeof message.content !== "string") return null;
+    messages.push({ role: expectedRole, content: message.content });
+  }
+  return messages;
+}
+
+async function resolveRequestConfiguration(tabId, stored, requestId, signal) {
+  const providers = normalizeProviders(stored.providers, stored);
+  const settings = getActiveProvider(providers, stored.activeProviderId) || {
+    ...DEFAULT_SETTINGS,
+    baseUrl: stored.baseUrl || stored.OPENAI_BASE_URL || DEFAULT_SETTINGS.baseUrl
+  };
+  if (!String(settings.apiKey).trim()) {
+    throw createSettingsError("尚未设置 API Key。请先在扩展设置中填写。");
+  }
+  if (!String(settings.model).trim()) {
+    throw createSettingsError("模型名称为空，请检查扩展设置。");
+  }
+
+  let baseUrl;
+  try {
+    baseUrl = normalizeBaseUrl(settings.baseUrl);
+    const permission = baseUrlOriginPattern(baseUrl);
+    const allowed = await extensionApi.permissions.contains({ origins: [permission] });
+    if (signal.aborted || !isCurrentRequest(tabId, requestId)) return { settings, baseUrl };
+    if (!allowed) {
+      throw new Error("尚未授权访问此 API 地址。请打开扩展设置并重新保存，以授予该站点访问权限。");
+    }
+  } catch (error) {
+    error.canOpenSettings = true;
+    throw error;
+  }
+  return { settings, baseUrl };
+}
+
+function createSettingsError(message) {
+  const error = new Error(message);
+  error.canOpenSettings = true;
+  return error;
 }
 
 function showPageAccessError() {
@@ -363,7 +446,7 @@ function isCurrentRequest(tabId, requestId) {
   return activeRequests.get(tabId)?.requestId === requestId;
 }
 
-async function streamResponse({ tabId, requestId, selectedText, selectedPrompt, settings, baseUrl, signal }) {
+async function streamResponse({ tabId, requestId, systemPrompt, messages, settings, baseUrl, signal, isFollowup }) {
   let timedOut = false;
   const timeout = setTimeout(() => {
     const current = activeRequests.get(tabId);
@@ -389,8 +472,8 @@ async function streamResponse({ tabId, requestId, selectedText, selectedPrompt, 
       baseUrl,
       apiKey: settings.apiKey,
       model: settings.model,
-      systemPrompt: selectedPrompt.content,
-      userText: selectedText,
+      systemPrompt,
+      messages,
       signal,
       onText: async (text) => {
         if (!isCurrentRequest(tabId, requestId)) return;
@@ -405,7 +488,7 @@ async function streamResponse({ tabId, requestId, selectedText, selectedPrompt, 
   } catch (error) {
     if (!timedOut) throw error;
     await sendToTab(tabId, {
-      type: "SHOW_ERROR",
+      type: isFollowup ? "SHOW_TURN_ERROR" : "SHOW_ERROR",
       requestId,
       message: "请求超时（2 分钟），请重试。"
     }).catch(() => {});

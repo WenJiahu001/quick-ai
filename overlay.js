@@ -90,12 +90,17 @@
     .selected-panel { margin-top:9px; padding:10px 12px 12px; border:1px solid var(--selected-border); border-radius:10px; background:var(--selected-bg); }
     .selected-text { display:block; max-height:120px; overflow:auto; margin:0; padding:0; color:var(--selected-text); white-space:break-spaces; overflow-wrap:anywhere; tab-size:4; text-indent:2em; font:inherit; font-size:14px; font-weight:550; line-height:1.6; }
     .reading-area { flex:1; min-height:0; overflow:auto; border-top:1px solid var(--divider); }
+    .transcript { padding:0 0 8px; }
+    .assistant-turn { padding-top:10px; }
+    .turn-label { margin:0 16px 2px; color:var(--muted-text); font-size:11px; font-weight:650; }
+    .user-turn { margin:12px 16px 0; }
+    .user-message { padding:9px 11px; border:1px solid var(--control-border); border-radius:10px; background:var(--soft-bg); white-space:pre-wrap; overflow-wrap:anywhere; }
     .answer-heading { display:flex; align-items:center; gap:8px; margin:10px 16px 0; color:var(--muted-text); font-size:12px; font-weight:650; }
     .answer-heading span { flex:1; }
     .copy-button { display:grid; place-items:center; width:36px; height:36px; padding:0; border:1px solid var(--control-border); border-radius:9px; background:var(--control-bg); }
     .copy-button[hidden] { display:none; }
     .copy-button:hover { filter:brightness(.96); }
-    .copy-button:focus-visible, .button:focus-visible { outline:3px solid #82a8ff; outline-offset:2px; }
+    .copy-button:focus-visible, .button:focus-visible, .hide-action-button:focus-visible { outline:3px solid #82a8ff; outline-offset:2px; }
     .copy-button svg { width:17px; height:17px; }
     .body { padding:10px 16px 18px; overflow-wrap:anywhere; min-height:60px; line-height:1.65; font-size:var(--answer-font-size); }
     .body.streaming { white-space:normal; }
@@ -115,15 +120,27 @@
     .body th { background:var(--code-bg); font-weight:650; }
     .body a { color:var(--accent); text-decoration:underline; }
     .body hr { border:0; border-top:1px solid var(--control-border); margin:1em 0; }
-    .status { padding:0 16px 12px; color:var(--muted-text); font-size:12px; }
-    .actions { display:flex; justify-content:center; padding:0 14px 14px; }
-    .button { min-width:108px; min-height:40px; border:0; border-radius:9px; padding:7px 18px; background:var(--answer-heading-text); color:var(--card-bg); font-weight:600; }
-    .button:hover { filter:brightness(1.15); }
+    .composer { flex:none; display:flex; align-items:flex-end; gap:9px; padding:10px 14px; border-top:1px solid var(--divider); background:var(--card-bg); }
+    .composer[hidden] { display:none; }
+    .composer-input { flex:1; min-width:0; min-height:40px; max-height:112px; resize:vertical; box-sizing:border-box; padding:8px 10px; border:1px solid var(--control-border); border-radius:9px; color:var(--card-text); background:var(--control-bg); font:inherit; line-height:1.45; }
+    .composer-input:focus-visible, .send-button:focus-visible { outline:3px solid #82a8ff; outline-offset:2px; }
+    .composer-input:disabled { opacity:.65; }
+    .send-button { flex:none; min-width:66px; min-height:40px; border:0; border-radius:9px; padding:7px 14px; color:var(--card-bg); background:var(--accent); font-weight:600; }
+    .send-button:disabled { opacity:.55; cursor:not-allowed; }
+    .status { padding:8px 16px 0; color:var(--muted-text); font-size:12px; }
+    .status:empty { display:none; }
+    .actions { display:flex; align-items:center; justify-content:center; gap:10px; padding:8px 14px 14px; }
+    .actions > button { flex:1; min-width:0; max-width:160px; padding-right:8px; padding-left:8px; white-space:nowrap; font-size:12px; }
+    .button, .hide-action-button { display:inline-flex; align-items:center; justify-content:center; gap:7px; min-height:42px; border-radius:10px; padding:7px 12px; font-weight:650; }
+    .button { border:0; background:var(--answer-heading-text); color:var(--card-bg); box-shadow:0 2px 5px rgba(12,24,48,.16); }
+    .button::before { content:"×"; font-size:19px; font-weight:400; line-height:1; }
+    .button:hover { filter:brightness(1.12); }
     .retry-button { min-width:108px; min-height:40px; border:1px solid var(--control-border); border-radius:9px; padding:7px 18px; color:var(--accent); background:var(--soft-bg); font-weight:600; }
     .retry-button:hover { filter:brightness(.96); }
     .retry-button:disabled { opacity:.6; cursor:wait; }
-    .hide-action-button { min-width:108px; min-height:40px; border:1px solid var(--control-border); border-radius:9px; padding:7px 18px; color:var(--card-text); background:var(--control-bg); font-weight:600; }
-    .hide-action-button:hover { filter:brightness(.96); }
+    .hide-action-button { border:1px solid var(--control-border); color:var(--muted-text); background:var(--control-bg); }
+    .hide-action-button::before { content:"−"; font-size:19px; font-weight:400; line-height:1; }
+    .hide-action-button:hover { color:var(--card-text); border-color:var(--muted-text); background:var(--soft-bg); }
     .resize-handle { position:absolute; z-index:5; display:grid; place-items:center; width:24px; min-width:24px; height:24px; min-height:24px; padding:0; border:0; border-radius:0; color:var(--muted-text); background:transparent; touch-action:none; }
     .resize-handle:hover { background:transparent; }
     .resize-handle:focus-visible { outline:2px solid var(--accent); outline-offset:-3px; }
@@ -145,7 +162,7 @@
   const card = document.createElement("section");
   card.className = "card";
   card.setAttribute("role", "dialog");
-  card.setAttribute("aria-label", "AI 回复");
+  card.setAttribute("aria-label", "快捷AI 回复");
   card.hidden = true;
 
   const header = document.createElement("header");
@@ -155,7 +172,7 @@
   spinner.setAttribute("aria-hidden", "true");
   const title = document.createElement("span");
   title.className = "title";
-  title.textContent = "AI 回复";
+  title.textContent = "快捷AI";
   const displaySettingsButton = document.createElement("button");
   displaySettingsButton.className = "display-settings-button";
   displaySettingsButton.type = "button";
@@ -241,9 +258,18 @@
   }
   displaySettings.append(fontSizeRow, styleOptions);
 
-  const body = document.createElement("div");
+  let body = document.createElement("div");
   body.className = "body";
   body.setAttribute("aria-live", "polite");
+  const transcript = document.createElement("div");
+  transcript.className = "transcript";
+  const initialAssistantTurn = document.createElement("section");
+  initialAssistantTurn.className = "assistant-turn";
+  const initialAssistantLabel = document.createElement("div");
+  initialAssistantLabel.className = "turn-label";
+  initialAssistantLabel.textContent = "AI";
+  initialAssistantTurn.append(initialAssistantLabel, body);
+  transcript.append(initialAssistantTurn);
   const contextArea = document.createElement("div");
   contextArea.className = "context-area";
   const requestDetails = document.createElement("details");
@@ -289,7 +315,22 @@
   answerHeading.append(answerLabel, copyButton);
   const readingArea = document.createElement("div");
   readingArea.className = "reading-area";
-  readingArea.append(answerHeading, body);
+  readingArea.append(answerHeading, transcript);
+  const composer = document.createElement("form");
+  composer.className = "composer";
+  composer.setAttribute("aria-label", "继续追问");
+  composer.hidden = true;
+  const composerInput = document.createElement("textarea");
+  composerInput.className = "composer-input";
+  composerInput.rows = 1;
+  composerInput.placeholder = "继续追问…（Enter 发送，Shift+Enter 换行）";
+  composerInput.setAttribute("aria-label", "输入追问内容");
+  const sendButton = document.createElement("button");
+  sendButton.className = "send-button";
+  sendButton.type = "submit";
+  sendButton.textContent = "发送";
+  sendButton.disabled = true;
+  composer.append(composerInput, sendButton);
   const status = document.createElement("div");
   status.className = "status";
   const actions = document.createElement("div");
@@ -304,12 +345,15 @@
   hideActionButton.type = "button";
   hideActionButton.textContent = "隐藏";
   hideActionButton.setAttribute("aria-label", "隐藏回复框");
+  hideActionButton.title = "隐藏回复框，保留本次对话";
   const settingsButton = document.createElement("button");
   settingsButton.className = "button";
   settingsButton.type = "button";
   settingsButton.textContent = "关闭";
+  settingsButton.setAttribute("aria-label", "关闭回复框并清除此轮对话");
+  settingsButton.title = "关闭回复框并清除此轮对话";
   actions.append(retryButton, hideActionButton, settingsButton);
-  card.append(header, displaySettings, contextArea, readingArea, status, actions);
+  card.append(header, displaySettings, contextArea, readingArea, status, composer, actions);
 
   const resizeCorners = [
     ["top-left", "左上角调整大小"],
@@ -334,6 +378,12 @@
   let fullTextParts = [];
   let isCollapsed = false;
   let lastRequest = null;
+  let currentSystemPrompt = "";
+  let conversationMessages = [];
+  let pendingTurn = null;
+  let conversationReady = false;
+  let isGenerating = false;
+  let followupAutoScroll = false;
   let streamRenderTimer = 0;
   let streamParser = null;
   let streamRenderedContent = null;
@@ -432,6 +482,69 @@
     receivedStreamCharacters = 0;
     responseTruncated = false;
     streamDoneReceived = false;
+  };
+
+  const scrollToFollowupBottom = () => {
+    if (!followupAutoScroll || readingArea.clientHeight === 0) return;
+    readingArea.scrollTop = readingArea.scrollHeight;
+  };
+
+  const createAssistantResponseBody = () => {
+    const turn = document.createElement("section");
+    turn.className = "assistant-turn";
+    const label = document.createElement("div");
+    label.className = "turn-label";
+    label.textContent = "AI";
+    const responseBody = document.createElement("div");
+    responseBody.className = "body";
+    responseBody.setAttribute("aria-live", "polite");
+    turn.append(label, responseBody);
+    transcript.append(turn);
+    return responseBody;
+  };
+
+  const appendUserTurn = (text) => {
+    const turn = document.createElement("section");
+    turn.className = "user-turn";
+    const label = document.createElement("div");
+    label.className = "turn-label";
+    label.textContent = "你";
+    const message = document.createElement("div");
+    message.className = "user-message";
+    message.textContent = text;
+    turn.append(label, message);
+    transcript.append(turn);
+  };
+
+  const updateComposerState = () => {
+    composer.hidden = !conversationReady;
+    const disabled = isGenerating || Boolean(pendingTurn);
+    composerInput.disabled = disabled;
+    sendButton.disabled = disabled || !composerInput.value.trim();
+  };
+
+  const clearConversation = () => {
+    currentSystemPrompt = "";
+    conversationMessages = [];
+    pendingTurn = null;
+    conversationReady = false;
+    isGenerating = false;
+    followupAutoScroll = false;
+    lastRequest = null;
+    composerInput.value = "";
+    updateComposerState();
+    transcript.replaceChildren();
+  };
+
+  const commitPendingTurn = () => {
+    if (!pendingTurn || !fullText || responseTruncated) return false;
+    conversationMessages = [
+      ...pendingTurn.messages,
+      { role: "assistant", content: fullText }
+    ];
+    pendingTurn = null;
+    conversationReady = true;
+    return true;
   };
 
   const appendPlainStreamingText = (value) => {
@@ -539,6 +652,7 @@
         } else if (parserWasUnavailable) {
           appendPlainStreamingText(text);
         }
+        scrollToFollowupBottom();
       }
     }
 
@@ -577,7 +691,6 @@
     streamRenderTimer = 0;
     fullText = fullTextParts.join("");
     spinner.hidden = true;
-    retryButton.hidden = true;
     copyButton.hidden = !fullText;
 
     if (ensureStreamingParser()) {
@@ -590,11 +703,31 @@
         return;
       }
     }
+    scrollToFollowupBottom();
     streamParser = null;
     body.classList.remove("streaming");
-    status.textContent = responseTruncated
-      ? "已完成（回复过长，已安全截断）"
-      : (fullText ? "生成完成" : "模型没有返回文字内容。");
+    const completed = commitPendingTurn();
+    if (completed) {
+      retryButton.hidden = true;
+      status.textContent = "生成完成";
+      status.classList.remove("error");
+    } else {
+      retryButton.hidden = false;
+      retryButton.disabled = false;
+      retryButton.textContent = "重试";
+      if (responseTruncated) {
+        body.classList.remove("error");
+      } else {
+        body.classList.add("error");
+        body.textContent = "模型没有返回文字内容，请重试。";
+      }
+      status.classList.add("error");
+      status.textContent = responseTruncated
+        ? "回复超过安全长度上限，当前不完整内容不会进入后续对话。"
+        : "模型没有返回文字内容，请重试。";
+    }
+    isGenerating = false;
+    updateComposerState();
   };
   const boundsStorageKey = "quickAiOverlayBounds";
   let boundsSaveTimer = 0;
@@ -822,14 +955,97 @@
   restoreButton.addEventListener("click", () => {
     setCollapsed(false);
     clampPosition();
+    scrollToFollowupBottom();
+  });
+
+  const showTurnError = (message) => {
+    clearTimeout(streamRenderTimer);
+    streamRenderTimer = 0;
+    resetStreamState();
+    spinner.hidden = true;
+    body.replaceChildren();
+    body.textContent = message || "追问失败，请重试。";
+    body.classList.add("error");
+    body.classList.remove("streaming");
+    status.classList.remove("error");
+    status.textContent = "";
+    scrollToFollowupBottom();
+    copyButton.hidden = true;
+    retryButton.hidden = false;
+    retryButton.disabled = false;
+    retryButton.textContent = "重试";
+    isGenerating = false;
+    updateComposerState();
+  };
+
+  const dispatchFollowup = async (messages) => {
+    followupAutoScroll = true;
+    const requestId = crypto.randomUUID();
+    currentRequestId = requestId;
+    isGenerating = true;
+    spinner.hidden = false;
+    retryButton.hidden = true;
+    retryButton.disabled = false;
+    retryButton.textContent = "重试";
+    status.textContent = pendingTurn?.kind === "followup" ? "正在生成追问回复…" : "正在生成 Markdown 回复…";
+    resetStreamState();
+    body.replaceChildren();
+    body.classList.remove("error");
+    body.classList.add("streaming");
+    updateComposerState();
+    scrollToFollowupBottom();
+
+    try {
+      await extensionApi.runtime.sendMessage({
+        type: "FOLLOWUP_REQUEST",
+        requestId,
+        systemPrompt: currentSystemPrompt,
+        messages
+      });
+    } catch {
+      if (currentRequestId === requestId) showTurnError("无法发起追问，请重新加载页面后再试。");
+    }
+  };
+
+  const submitFollowup = async () => {
+    if (!conversationReady || isGenerating || pendingTurn) return;
+    const userText = composerInput.value;
+    if (!userText.trim()) return;
+
+    const messages = [...conversationMessages, { role: "user", content: userText }];
+    pendingTurn = { kind: "followup", messages };
+    lastRequest = { kind: "followup", messages };
+    appendUserTurn(userText);
+    composerInput.value = "";
+    body = createAssistantResponseBody();
+    void dispatchFollowup(messages);
+  };
+
+  composer.addEventListener("submit", (event) => {
+    event.preventDefault();
+    void submitFollowup();
+  });
+  composerInput.addEventListener("input", updateComposerState);
+  composerInput.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" || event.shiftKey || event.isComposing || event.keyCode === 229) return;
+    event.preventDefault();
+    void submitFollowup();
   });
 
   retryButton.addEventListener("click", async () => {
     if (!lastRequest || retryButton.disabled) return;
     retryButton.disabled = true;
     retryButton.textContent = "正在重试…";
+    if (lastRequest.kind === "followup" && pendingTurn) {
+      void dispatchFollowup(pendingTurn.messages);
+      return;
+    }
     try {
-      await extensionApi.runtime.sendMessage({ type: "RETRY_REQUEST", ...lastRequest });
+      await extensionApi.runtime.sendMessage({
+        type: "RETRY_REQUEST",
+        selectedText: lastRequest.selectedText,
+        promptId: lastRequest.promptId
+      });
     } catch {
       retryButton.disabled = false;
       retryButton.textContent = "重试";
@@ -846,6 +1062,13 @@
     streamRenderTimer = 0;
     resetStreamState();
     currentRequestId = null;
+    clearConversation();
+    body.replaceChildren();
+    body.classList.remove("error", "streaming");
+    spinner.hidden = true;
+    retryButton.hidden = true;
+    copyButton.hidden = true;
+    status.textContent = "";
     card.hidden = true;
     restoreButton.hidden = true;
     isCollapsed = false;
@@ -881,8 +1104,11 @@
       clearTimeout(streamRenderTimer);
       streamRenderTimer = 0;
       resetStreamState();
+      clearConversation();
       currentRequestId = message.requestId;
+      currentSystemPrompt = String(message.promptText ?? "");
       lastRequest = {
+        kind: "initial",
         selectedText: String(message.retrySelectedText ?? message.selectedText ?? ""),
         promptId: String(message.promptId ?? "")
       };
@@ -893,15 +1119,22 @@
       selectedText.textContent = selectedTextValue;
       // 如果原始文本已带首行空格，就保留这些空格，避免再叠加 CSS 缩进。
       selectedText.style.textIndent = /^[\t \u3000]/.test(selectedTextValue) ? "0" : "2em";
-      body.textContent = "";
+      body = createAssistantResponseBody();
+      conversationMessages = [];
+      pendingTurn = { kind: "initial", messages: [{ role: "user", content: selectedTextValue }] };
+      conversationReady = false;
+      isGenerating = true;
       body.classList.remove("error");
       body.classList.remove("streaming");
+      status.classList.remove("error");
       status.textContent = "正在生成 Markdown 回复…";
       spinner.hidden = false;
       copyButton.hidden = true;
       retryButton.hidden = true;
       retryButton.disabled = false;
       retryButton.textContent = "重试";
+      composerInput.value = "";
+      updateComposerState();
       displaySettings.hidden = true;
       displaySettingsButton.setAttribute("aria-expanded", "false");
       displaySettingsButton.setAttribute("aria-label", "显示样式设置");
@@ -913,26 +1146,26 @@
 
     if (message?.requestId !== currentRequestId) return;
 
-    if (message.type === "APPEND_TEXT") {
+    if (message.type === "FOLLOWUP_LOADING") {
+      resetStreamState();
+      body.replaceChildren();
+      body.classList.remove("error");
+      body.classList.add("streaming");
+      isGenerating = true;
+      spinner.hidden = false;
+      retryButton.hidden = true;
+      retryButton.disabled = false;
+      status.classList.remove("error");
+      status.textContent = "正在生成追问回复…";
+      updateComposerState();
+    } else if (message.type === "APPEND_TEXT") {
       queueStreamText(String(message.text ?? ""));
     } else if (message.type === "STREAM_DONE") {
       streamDoneReceived = true;
       if (pendingStreamCharacters > 0) scheduleStreamingUpdate();
       else void startFinalMarkdownRender();
-    } else if (message.type === "SHOW_ERROR") {
-      clearTimeout(streamRenderTimer);
-      streamRenderTimer = 0;
-      resetStreamState();
-      spinner.hidden = true;
-      body.textContent = message.message || "请求失败，请稍后重试。";
-      body.classList.add("error");
-      body.classList.remove("streaming");
-      status.textContent = "";
-      copyButton.hidden = true;
-      retryButton.hidden = false;
-      retryButton.disabled = false;
-      retryButton.textContent = "重试";
-      settingsButton.textContent = "关闭";
+    } else if (message.type === "SHOW_ERROR" || message.type === "SHOW_TURN_ERROR") {
+      showTurnError(message.message || "请求失败，请稍后重试。");
       if (!isCollapsed) card.hidden = false;
     }
   });
