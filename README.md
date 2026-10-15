@@ -2,11 +2,11 @@
 
 快捷AI 是一款 Manifest V3 浏览器扩展：选中网页文字后，从右键菜单选择提示词，将选中文字发送给你配置的 AI 服务商，并在网页中查看流式 Markdown 回复。
 
-支持 Chromium 121+（Edge、Chrome、Brave、Vivaldi、Opera）和 Firefox 140+ 桌面版。项目不依赖 npm 第三方包。
+支持 Chromium 121+ 桌面版，包括 Edge、Chrome、Brave、Vivaldi 和 Opera。项目不依赖 npm 第三方包。
 
 ## 下载与安装
 
-发布包会放在 [GitHub Releases](https://github.com/WenJiahu001/quick-ai/releases)。Chromium 用户下载并解压 `quick-ai-chromium-v版本号.zip`，Firefox 用户下载 AMO 签名后的 `quick-ai-firefox-v版本号.xpi`。
+发布包会放在 [GitHub Releases](https://github.com/WenJiahu001/quick-ai/releases)。下载并解压 `quick-ai-chromium-v版本号.zip`。
 
 ### Edge、Chrome、Brave、Vivaldi 和 Opera
 
@@ -19,21 +19,15 @@
 
 ![浏览器扩展管理页面加载本地扩展的示意图](img/安装示例.svg)
 
-### Firefox 桌面版
-
-快捷AI 的 Firefox 发布包通过 Mozilla Add-ons（AMO）签名后自行分发，不公开列在 AMO 商店中。Firefox 140 或更高版本中打开“附加组件和主题”，从设置菜单选择“从文件安装附加组件”，再选中下载的 XPI 文件。Firefox 安装时会说明扩展发送给 AI 服务商的数据类型。
-
-如需从源码试用：先运行下方打包命令，再打开 `about:debugging#/runtime/this-firefox`，选择“临时载入附加组件”，载入 `dist/firefox/manifest.json`。临时扩展在 Firefox 关闭后会移除。每个正式发布版本都需要重新提交 AMO 签名，再将签名返回的 XPI 附到 GitHub Release。
-
 ### 从源码构建
 
-需要安装 Node.js。运行下列命令生成 Chromium 和 Firefox 扩展目录：
+需要安装 Node.js。运行下列命令生成 Chromium 扩展目录：
 
 ```sh
 node scripts/package.mjs
 ```
 
-生成目录为 `dist/chromium/` 和 `dist/firefox/`。也可只生成一个目标，例如 `node scripts/package.mjs firefox`。维护者可在 Windows PowerShell 中运行 `scripts/create-release-assets.ps1`，生成 Chromium 发布 ZIP 和提交 AMO 签名用的 Firefox ZIP；签名后的 XPI 需从 AMO 手动下载。
+生成目录为 `dist/chromium/`。维护者可在 Windows PowerShell 中运行 `scripts/create-release-assets.ps1` 生成 Chromium 发布 ZIP。
 
 修改源码后重新构建，在浏览器扩展管理页重新加载，并刷新已打开的网页。
 
@@ -67,6 +61,8 @@ node scripts/package.mjs
 ![选中文字并从右键菜单选择快捷AI提示词](img/使用.png)
 
 扩展只读取选中的文字，不读取整页内容。清理后的选中文字固定显示在回复浮层顶部，便于对照；浮层可拖动、调整大小、隐藏或关闭，回复可单独滚动。
+
+回复浮层顶部的设置图标中可调整字体大小和显示风格，也可开启“点击网页空白处隐藏主界面”。开启后，点击回复框外的网页非交互区域会收起主界面并保留当前回复；链接、按钮和输入控件不会触发隐藏。
 
 ![快捷AI 在网页中显示流式 Markdown 回复](img/效果.png)
 

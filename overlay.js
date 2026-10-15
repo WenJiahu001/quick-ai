@@ -62,7 +62,7 @@
     .visibility-button:focus-visible, .display-settings-button:focus-visible { outline:3px solid #82a8ff; outline-offset:2px; }
     .display-settings-button[aria-expanded="true"] { color:var(--accent); border-color:var(--accent); }
     .display-settings-button svg { width:17px; height:17px; }
-    .restore-button { position:fixed; top:20px; right:12px; display:grid; place-items:center; width:30px; height:30px; padding:0; border:1px solid #e3e8f0; border-radius:8px; color:#53627a; background:#fff; box-shadow:none; font-size:14px; line-height:1; cursor:pointer; }
+    .restore-button { position:fixed; top:20px; right:12px; display:flex; align-items:center; justify-content:center; width:92px; height:34px; padding:0 10px; border:1px solid #e3e8f0; border-radius:9px; color:#53627a; background:#fff; box-shadow:0 2px 6px rgba(20,32,52,.12); font-size:13px; font-weight:600; line-height:1; white-space:nowrap; cursor:pointer; }
     .restore-button[hidden] { display:none; }
     .restore-button:hover { background:#f0f3f8; }
     .restore-button:focus-visible { outline:3px solid #82a8ff; outline-offset:2px; }
@@ -73,6 +73,11 @@
     .settings-label { min-width:56px; }
     .settings-value { min-width:34px; text-align:right; font-variant-numeric:tabular-nums; }
     .font-size-slider { flex:1; min-width:90px; margin:0; accent-color:var(--accent); }
+    .outside-dismiss-row { display:flex; align-items:flex-start; gap:9px; margin-top:11px; padding-top:10px; border-top:1px solid var(--divider); cursor:pointer; }
+    .outside-dismiss-checkbox { flex:none; width:15px; height:15px; margin:1px 0 0; accent-color:var(--accent); }
+    .outside-dismiss-copy { display:grid; gap:2px; }
+    .outside-dismiss-label { color:var(--card-text); font-size:12px; font-weight:600; }
+    .outside-dismiss-hint { color:var(--muted-text); font-size:11px; line-height:1.4; }
     .style-options { display:flex; align-items:center; flex-wrap:wrap; gap:7px; margin-top:9px; }
     .style-option { display:flex; align-items:center; gap:6px; min-height:30px; padding:4px 9px; border:1px solid var(--control-border); border-radius:8px; color:var(--muted-text); background:var(--control-bg); font-size:12px; }
     .style-option[aria-pressed="true"] { color:var(--card-text); border-color:var(--accent); box-shadow:0 0 0 1px var(--accent) inset; }
@@ -202,9 +207,9 @@
   const restoreButton = document.createElement("button");
   restoreButton.className = "restore-button";
   restoreButton.type = "button";
-  restoreButton.setAttribute("aria-label", "显示 AI 回复框");
-  restoreButton.title = "显示 AI 回复框";
-  restoreButton.textContent = "+";
+  restoreButton.setAttribute("aria-label", "显示快捷AI回复框");
+  restoreButton.title = "显示快捷AI回复框";
+  restoreButton.textContent = "快捷AI +";
   restoreButton.hidden = true;
 
   const displaySettings = document.createElement("section");
@@ -228,6 +233,22 @@
   const fontSizeValue = document.createElement("output");
   fontSizeValue.className = "settings-value";
   fontSizeRow.append(fontSizeLabel, fontSizeSlider, fontSizeValue);
+  const outsideDismissRow = document.createElement("label");
+  outsideDismissRow.className = "outside-dismiss-row";
+  const outsideDismissCheckbox = document.createElement("input");
+  outsideDismissCheckbox.className = "outside-dismiss-checkbox";
+  outsideDismissCheckbox.type = "checkbox";
+  outsideDismissCheckbox.setAttribute("aria-label", "点击网页空白处隐藏主界面");
+  const outsideDismissCopy = document.createElement("span");
+  outsideDismissCopy.className = "outside-dismiss-copy";
+  const outsideDismissLabel = document.createElement("span");
+  outsideDismissLabel.className = "outside-dismiss-label";
+  outsideDismissLabel.textContent = "点击网页空白处隐藏主界面";
+  const outsideDismissHint = document.createElement("span");
+  outsideDismissHint.className = "outside-dismiss-hint";
+  outsideDismissHint.textContent = "回复框外的网页区域会收起回复；链接、按钮和输入框不会触发。";
+  outsideDismissCopy.append(outsideDismissLabel, outsideDismissHint);
+  outsideDismissRow.append(outsideDismissCheckbox, outsideDismissCopy);
   const styleOptions = document.createElement("div");
   styleOptions.className = "style-options";
   styleOptions.setAttribute("role", "group");
@@ -256,7 +277,7 @@
     styleButtons.set(choice.id, button);
     styleOptions.append(button);
   }
-  displaySettings.append(fontSizeRow, styleOptions);
+  displaySettings.append(fontSizeRow, styleOptions, outsideDismissRow);
 
   let body = document.createElement("div");
   body.className = "body";
@@ -401,10 +422,13 @@
   const MAX_STREAM_CHARS_PER_TICK = 2_048;
   const MAX_RESPONSE_CHARS = 250_000;
   const appearanceStorageKey = "quickAiOverlayAppearance";
+  const outsideClickDismissStorageKey = "quickAiOutsideClickDismiss";
   const appearanceDefaults = { fontSize: 16, theme: "paper" };
   let appearance = { ...appearanceDefaults };
   let appearanceTouchedBeforeLoad = false;
   let appearanceSaveTimer = 0;
+  let dismissOnOutsideClick = false;
+  let outsideClickDismissTouchedBeforeLoad = false;
 
   const normalizeAppearance = (value) => {
     const fontSize = Number(value?.fontSize);
@@ -433,16 +457,26 @@
   };
 
   applyAppearance();
-  extensionApi.storage.local.get(appearanceStorageKey).then((stored) => {
+  extensionApi.storage.local.get([appearanceStorageKey, outsideClickDismissStorageKey]).then((stored) => {
     if (!appearanceTouchedBeforeLoad) {
       appearance = normalizeAppearance(stored?.[appearanceStorageKey]);
       applyAppearance();
     }
+    if (!outsideClickDismissTouchedBeforeLoad) {
+      dismissOnOutsideClick = stored?.[outsideClickDismissStorageKey] === true;
+      outsideDismissCheckbox.checked = dismissOnOutsideClick;
+    }
   }).catch(() => {});
   extensionApi.storage.onChanged.addListener((changes, areaName) => {
-    if (areaName !== "local" || !changes[appearanceStorageKey]) return;
-    appearance = normalizeAppearance(changes[appearanceStorageKey].newValue);
-    applyAppearance();
+    if (areaName !== "local") return;
+    if (changes[appearanceStorageKey]) {
+      appearance = normalizeAppearance(changes[appearanceStorageKey].newValue);
+      applyAppearance();
+    }
+    if (changes[outsideClickDismissStorageKey]) {
+      dismissOnOutsideClick = changes[outsideClickDismissStorageKey].newValue === true;
+      outsideDismissCheckbox.checked = dismissOnOutsideClick;
+    }
   });
 
   fontSizeSlider.addEventListener("input", () => {
@@ -463,6 +497,11 @@
     displaySettings.hidden = !displaySettings.hidden;
     displaySettingsButton.setAttribute("aria-expanded", String(!displaySettings.hidden));
     displaySettingsButton.setAttribute("aria-label", displaySettings.hidden ? "显示样式设置" : "隐藏样式设置");
+  });
+  outsideDismissCheckbox.addEventListener("change", () => {
+    outsideClickDismissTouchedBeforeLoad = true;
+    dismissOnOutsideClick = outsideDismissCheckbox.checked;
+    extensionApi.storage.local.set({ [outsideClickDismissStorageKey]: dismissOnOutsideClick }).catch(() => {});
   });
 
   const resetStreamState = () => {
@@ -746,9 +785,13 @@
     const top = rect.height ? rect.top : Number.parseFloat(host.style.top);
     const cardLeft = Number.isFinite(left) ? left : window.innerWidth - width - 20;
     const cardTop = Number.isFinite(top) ? top : 20;
-    restoreButton.style.left = `${Math.min(Math.max(12, cardLeft + width - 44), Math.max(12, window.innerWidth - 42))}px`;
+    const restoreWidth = restoreButton.offsetWidth || 92;
+    const restoreHeight = restoreButton.offsetHeight || 34;
+    const maxRestoreLeft = Math.max(12, window.innerWidth - restoreWidth - 12);
+    const maxRestoreTop = Math.max(12, window.innerHeight - restoreHeight - 12);
+    restoreButton.style.left = `${Math.min(Math.max(12, cardLeft + width - restoreWidth - 14), maxRestoreLeft)}px`;
     restoreButton.style.right = "auto";
-    restoreButton.style.top = `${Math.min(Math.max(12, cardTop + 13), Math.max(12, window.innerHeight - 42))}px`;
+    restoreButton.style.top = `${Math.min(Math.max(12, cardTop + 13), maxRestoreTop)}px`;
   };
 
   const clampPosition = () => {
@@ -957,6 +1000,16 @@
     clampPosition();
     scrollToFollowupBottom();
   });
+  document.addEventListener("click", (event) => {
+    if (!dismissOnOutsideClick || card.hidden || isCollapsed || event.button !== 0) return;
+    if (event.composedPath().includes(host)) return;
+
+    const target = event.target?.nodeType === Node.ELEMENT_NODE ? event.target : event.target?.parentElement;
+    if (target?.closest("a, button, input, select, textarea, summary, [contenteditable]:not([contenteditable='false']), [role='button'], [role='link'], [role='menuitem'], [role='textbox']")) return;
+
+    saveBounds();
+    setCollapsed(true);
+  }, true);
 
   const showTurnError = (message) => {
     clearTimeout(streamRenderTimer);

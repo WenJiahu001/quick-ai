@@ -1,9 +1,9 @@
-// Chromium 与 Firefox 在部分版本中分别提供 browser 或 chrome 命名空间。
+// Chromium 浏览器提供 chrome 扩展 API 命名空间。
 (() => {
   if (globalThis.quickAiBrowserApi) return;
 
-  const api = globalThis.browser ?? globalThis.chrome;
-  if (!api) throw new Error("当前环境未提供浏览器扩展 API。");
+  const api = globalThis.chrome;
+  if (!api) throw new Error("当前 Chromium 环境未提供扩展 API。");
 
   Object.defineProperty(globalThis, "quickAiBrowserApi", {
     value: api,
