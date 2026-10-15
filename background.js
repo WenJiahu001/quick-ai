@@ -39,12 +39,13 @@ extensionApi.storage.onChanged.addListener((changes, areaName) => {
 extensionApi.contextMenus.onClicked.addListener((info, tab) => {
   if (typeof info.menuItemId !== "string" || !info.menuItemId.startsWith(MENU_ITEM_PREFIX) || !tab?.id) return;
 
-  // 判空时忽略纯空白选区，但传给模型和界面时保留原始换行与首尾空白。
-  const selectedText = String(info.selectionText ?? "");
-  if (!selectedText.trim()) return;
-
   const promptId = info.menuItemId.slice(MENU_ITEM_PREFIX.length);
-  void beginRequest(tab.id, selectedText, promptId);
+  const fallbackText = String(info.selectionText ?? "");
+  void readSelectedText(tab.id, info.frameId, fallbackText).then((selectedText) => {
+    // 判空时忽略纯空白选区，但传给模型和界面时保留原始换行与首尾空白。
+    if (!selectedText.trim()) return;
+    return beginRequest(tab.id, selectedText, promptId);
+  });
 });
 
 extensionApi.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -142,6 +143,78 @@ function createContextMenu(properties) {
       else resolve();
     });
   });
+}
+
+async function readSelectedText(tabId, frameId, fallbackText) {
+  try {
+    const target = Number.isInteger(frameId) && frameId >= 0
+      ? { tabId, frameIds: [frameId] }
+      : { tabId };
+    const results = await extensionApi.scripting.executeScript({
+      target,
+      // contextMenus.selectionText flattens visual block breaks in Chromium.
+      // Read only the active range so the displayed and submitted text retain them.
+      func: () => {
+        const activeElement = document.activeElement;
+        if (
+          activeElement &&
+          typeof activeElement.selectionStart === "number" &&
+          typeof activeElement.selectionEnd === "number" &&
+          typeof activeElement.value === "string"
+        ) {
+          return activeElement.value.slice(activeElement.selectionStart, activeElement.selectionEnd);
+        }
+
+        const selection = window.getSelection();
+        if (!selection || selection.isCollapsed || selection.rangeCount === 0) return "";
+
+        const fragment = selection.getRangeAt(0).cloneContents();
+        const blockTags = new Set([
+          "ADDRESS", "ARTICLE", "ASIDE", "BLOCKQUOTE", "CAPTION", "DD", "DETAILS", "DIALOG",
+          "DIV", "DL", "DT", "FIELDSET", "FIGCAPTION", "FIGURE", "FOOTER", "FORM",
+          "H1", "H2", "H3", "H4", "H5", "H6", "HEADER", "HR", "LI", "MAIN", "MENU",
+          "NAV", "OL", "P", "PRE", "SECTION", "SUMMARY", "TABLE", "TBODY", "TD", "TFOOT",
+          "TH", "THEAD", "TR", "UL"
+        ]);
+        let text = "";
+        let pendingBlockBreak = false;
+
+        const appendText = (value) => {
+          if (!value) return;
+          if (pendingBlockBreak && text && !text.endsWith("\n")) text += "\n";
+          pendingBlockBreak = false;
+          text += value;
+        };
+        const visit = (node) => {
+          if (node.nodeType === 3) {
+            appendText(node.nodeValue ?? "");
+            return;
+          }
+          if (node.nodeType !== 1 && node.nodeType !== 11) return;
+
+          const element = node.nodeType === 1 ? node : null;
+          if (element?.tagName === "BR") {
+            if (pendingBlockBreak && text && !text.endsWith("\n")) text += "\n";
+            pendingBlockBreak = false;
+            text += "\n";
+            return;
+          }
+
+          const isBlock = element && blockTags.has(element.tagName);
+          if (isBlock) pendingBlockBreak = true;
+          for (const child of node.childNodes) visit(child);
+          if (isBlock) pendingBlockBreak = true;
+        };
+        visit(fragment);
+        return text;
+      }
+    });
+    const selectedText = String(results?.[0]?.result ?? "");
+    return selectedText.trim() ? selectedText : fallbackText;
+  } catch {
+    // Restricted pages and inaccessible frames may reject injection; keep the browser-provided text.
+    return fallbackText;
+  }
 }
 
 async function beginRequest(tabId, selectedText, promptId) {
