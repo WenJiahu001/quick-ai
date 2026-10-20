@@ -99,7 +99,30 @@
     .assistant-turn { padding-top:10px; }
     .turn-label { margin:0 16px 2px; color:var(--muted-text); font-size:11px; font-weight:650; }
     .user-turn { margin:12px 16px 0; }
+    .user-turn-heading { display:flex; align-items:center; justify-content:space-between; min-height:24px; margin-bottom:2px; }
+    .user-turn-heading .turn-label { margin:0; }
     .user-message { padding:9px 11px; border:1px solid var(--control-border); border-radius:10px; background:var(--soft-bg); white-space:pre-wrap; overflow-wrap:anywhere; }
+    .user-edit-button { display:grid; place-items:center; width:28px; height:26px; padding:0; border:1px solid transparent; border-radius:7px; color:var(--muted-text); background:transparent; }
+    .user-edit-button:hover { border-color:var(--control-border); color:var(--accent); background:var(--soft-bg); }
+    .user-edit-button:disabled { opacity:.45; cursor:not-allowed; }
+    .user-edit-button[hidden], .user-editor[hidden] { display:none; }
+    .user-edit-button svg { width:15px; height:15px; }
+    .user-editor { display:grid; gap:8px; }
+    .user-editor-input { box-sizing:border-box; width:100%; min-height:76px; max-height:200px; resize:vertical; padding:9px 11px; border:1px solid var(--control-border); border-radius:9px; color:var(--card-text); background:var(--control-bg); font:inherit; line-height:1.5; }
+    .user-editor-input:focus-visible, .user-editor-actions button:focus-visible { outline:3px solid #82a8ff; outline-offset:2px; }
+    .user-editor-warning { margin:0; color:var(--muted-text); font-size:11px; line-height:1.45; }
+    .user-editor-warning[hidden] { display:none; }
+    .user-editor-actions { display:flex; justify-content:flex-end; gap:7px; }
+    .user-editor-actions button { min-height:32px; padding:5px 10px; border:1px solid var(--control-border); border-radius:8px; color:var(--muted-text); background:var(--control-bg); font-size:12px; font-weight:600; }
+    .user-editor-actions .user-editor-save { border-color:var(--accent); color:var(--card-bg); background:var(--accent); }
+    .edit-confirmation-dialog { width:min(400px, calc(100vw - 36px)); padding:0; border:1px solid var(--control-border); border-radius:13px; color:var(--card-text); background:var(--card-bg); box-shadow:0 18px 50px rgba(12,24,48,.28); }
+    .edit-confirmation-dialog::backdrop { background:rgba(12,22,38,.42); }
+    .edit-confirmation-content { display:grid; gap:13px; padding:20px; }
+    .edit-confirmation-content h2 { margin:0; font-size:16px; }
+    .edit-confirmation-content p { margin:0; color:var(--muted-text); font-size:13px; line-height:1.55; }
+    .edit-confirmation-actions { display:flex; justify-content:flex-end; gap:8px; }
+    .edit-confirmation-actions button { min-height:36px; padding:6px 12px; border:1px solid var(--control-border); border-radius:8px; color:var(--muted-text); background:var(--control-bg); font-size:12px; font-weight:600; }
+    .edit-confirmation-actions .edit-confirmation-continue { border-color:var(--accent); color:var(--card-bg); background:var(--accent); }
     .answer-heading { display:flex; align-items:center; gap:8px; margin:10px 16px 0; color:var(--muted-text); font-size:12px; font-weight:650; }
     .answer-heading span { flex:1; }
     .copy-button { display:grid; place-items:center; width:36px; height:36px; padding:0; border:1px solid var(--control-border); border-radius:9px; background:var(--control-bg); }
@@ -211,6 +234,29 @@
   restoreButton.title = "显示快捷AI回复框";
   restoreButton.textContent = "快捷AI +";
   restoreButton.hidden = true;
+
+  const editConfirmationDialog = document.createElement("dialog");
+  editConfirmationDialog.className = "edit-confirmation-dialog";
+  const editConfirmationForm = document.createElement("form");
+  editConfirmationForm.className = "edit-confirmation-content";
+  editConfirmationForm.method = "dialog";
+  const editConfirmationTitle = document.createElement("h2");
+  editConfirmationTitle.textContent = "重新生成这条追问？";
+  const editConfirmationMessage = document.createElement("p");
+  const editConfirmationActions = document.createElement("div");
+  editConfirmationActions.className = "edit-confirmation-actions";
+  const editConfirmationCancel = document.createElement("button");
+  editConfirmationCancel.type = "submit";
+  editConfirmationCancel.value = "cancel";
+  editConfirmationCancel.textContent = "返回编辑";
+  const editConfirmationContinue = document.createElement("button");
+  editConfirmationContinue.className = "edit-confirmation-continue";
+  editConfirmationContinue.type = "submit";
+  editConfirmationContinue.value = "confirm";
+  editConfirmationContinue.textContent = "删除后续并重新生成";
+  editConfirmationActions.append(editConfirmationCancel, editConfirmationContinue);
+  editConfirmationForm.append(editConfirmationTitle, editConfirmationMessage, editConfirmationActions);
+  editConfirmationDialog.append(editConfirmationForm);
 
   const displaySettings = document.createElement("section");
   displaySettings.className = "display-settings";
@@ -392,7 +438,7 @@
     card.append(handle);
     return handle;
   });
-  shadow.append(style, card, restoreButton);
+  shadow.append(style, card, restoreButton, editConfirmationDialog);
 
   let currentRequestId = null;
   let fullText = "";
@@ -401,7 +447,10 @@
   let lastRequest = null;
   let currentSystemPrompt = "";
   let conversationMessages = [];
+  const followupTurns = [];
   let pendingTurn = null;
+  let editingTurn = null;
+  let isConfirmingEdit = false;
   let conversationReady = false;
   let isGenerating = false;
   let followupAutoScroll = false;
@@ -528,7 +577,7 @@
     readingArea.scrollTop = readingArea.scrollHeight;
   };
 
-  const createAssistantResponseBody = () => {
+  const createAssistantResponseBody = (followupTurn = null) => {
     const turn = document.createElement("section");
     turn.className = "assistant-turn";
     const label = document.createElement("div");
@@ -539,33 +588,110 @@
     responseBody.setAttribute("aria-live", "polite");
     turn.append(label, responseBody);
     transcript.append(turn);
+    if (followupTurn) followupTurn.assistantElement = turn;
     return responseBody;
   };
 
   const appendUserTurn = (text) => {
     const turn = document.createElement("section");
     turn.className = "user-turn";
+    const heading = document.createElement("div");
+    heading.className = "user-turn-heading";
     const label = document.createElement("div");
     label.className = "turn-label";
     label.textContent = "你";
+    const editButton = document.createElement("button");
+    editButton.className = "user-edit-button";
+    editButton.type = "button";
+    editButton.setAttribute("aria-label", "编辑这条追问");
+    editButton.title = "编辑并重新生成";
+    const editIcon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    editIcon.setAttribute("viewBox", "0 0 24 24");
+    editIcon.setAttribute("fill", "none");
+    editIcon.setAttribute("stroke", "currentColor");
+    editIcon.setAttribute("stroke-width", "1.8");
+    editIcon.setAttribute("stroke-linecap", "round");
+    editIcon.setAttribute("stroke-linejoin", "round");
+    editIcon.setAttribute("aria-hidden", "true");
+    const editPath = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    editPath.setAttribute("d", "M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L8 18l-4 1 1-4Z");
+    editIcon.append(editPath);
+    editButton.append(editIcon);
     const message = document.createElement("div");
     message.className = "user-message";
     message.textContent = text;
-    turn.append(label, message);
+
+    const editor = document.createElement("div");
+    editor.className = "user-editor";
+    editor.hidden = true;
+    const editorInput = document.createElement("textarea");
+    editorInput.className = "user-editor-input";
+    editorInput.setAttribute("aria-label", "编辑追问内容");
+    const editorWarning = document.createElement("p");
+    editorWarning.className = "user-editor-warning";
+    editorWarning.hidden = true;
+    const editorActions = document.createElement("div");
+    editorActions.className = "user-editor-actions";
+    const cancelEditButton = document.createElement("button");
+    cancelEditButton.type = "button";
+    cancelEditButton.textContent = "取消";
+    const saveEditButton = document.createElement("button");
+    saveEditButton.className = "user-editor-save";
+    saveEditButton.type = "button";
+    saveEditButton.textContent = "修改并重新生成";
+    editorActions.append(cancelEditButton, saveEditButton);
+    editor.append(editorInput, editorWarning, editorActions);
+
+    const followupTurn = {
+      element: turn,
+      message,
+      editButton,
+      editor,
+      editorInput,
+      editorWarning,
+      cancelEditButton,
+      saveEditButton,
+      assistantElement: null
+    };
+    heading.append(label, editButton);
+    turn.append(heading, message, editor);
     transcript.append(turn);
+    editButton.addEventListener("click", () => beginEditingTurn(followupTurn));
+    cancelEditButton.addEventListener("click", () => cancelEditingTurn(followupTurn));
+    saveEditButton.addEventListener("click", () => void saveEditedTurn(followupTurn));
+    editorInput.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+        event.preventDefault();
+        void saveEditedTurn(followupTurn);
+      }
+      if (event.key === "Escape") {
+        event.preventDefault();
+        cancelEditingTurn(followupTurn);
+      }
+    });
+    return followupTurn;
   };
 
   const updateComposerState = () => {
     composer.hidden = !conversationReady;
-    const disabled = isGenerating || Boolean(pendingTurn);
+    const disabled = isGenerating || Boolean(pendingTurn) || Boolean(editingTurn);
     composerInput.disabled = disabled;
     sendButton.disabled = disabled || !composerInput.value.trim();
+    for (const turn of followupTurns) {
+      turn.editButton.disabled = isGenerating || Boolean(pendingTurn) || isConfirmingEdit || Boolean(editingTurn && editingTurn !== turn);
+      turn.saveEditButton.disabled = isGenerating || Boolean(pendingTurn) || isConfirmingEdit;
+      turn.cancelEditButton.disabled = isGenerating || Boolean(pendingTurn) || isConfirmingEdit;
+    }
   };
 
   const clearConversation = () => {
+    if (editConfirmationDialog.open) editConfirmationDialog.close("cancel");
     currentSystemPrompt = "";
     conversationMessages = [];
+    followupTurns.length = 0;
     pendingTurn = null;
+    editingTurn = null;
+    isConfirmingEdit = false;
     conversationReady = false;
     isGenerating = false;
     followupAutoScroll = false;
@@ -573,6 +699,111 @@
     composerInput.value = "";
     updateComposerState();
     transcript.replaceChildren();
+  };
+
+  const beginEditingTurn = (turn) => {
+    if (!conversationReady || isGenerating || pendingTurn || isConfirmingEdit || (editingTurn && editingTurn !== turn)) return;
+    const turnIndex = followupTurns.indexOf(turn);
+    if (turnIndex < 0) return;
+
+    editingTurn = turn;
+    turn.editorInput.value = turn.message.textContent;
+    const laterTurnCount = followupTurns.length - turnIndex - 1;
+    turn.editorWarning.hidden = laterTurnCount === 0;
+    turn.editorWarning.textContent = laterTurnCount
+      ? `修改后需要重新生成回复，并删除之后的 ${laterTurnCount} 轮追问及回复。`
+      : "修改后会重新生成这条追问对应的回复。";
+    turn.message.hidden = true;
+    turn.editButton.hidden = true;
+    turn.editor.hidden = false;
+    updateComposerState();
+    turn.editorInput.focus();
+    turn.editorInput.setSelectionRange(turn.editorInput.value.length, turn.editorInput.value.length);
+  };
+
+  const cancelEditingTurn = (turn) => {
+    if (editingTurn !== turn || isGenerating || pendingTurn) return;
+    turn.message.hidden = false;
+    turn.editButton.hidden = false;
+    turn.editor.hidden = true;
+    turn.editorWarning.hidden = true;
+    editingTurn = null;
+    updateComposerState();
+    turn.editButton.focus();
+  };
+
+  const confirmLaterTurnRemoval = (count) => {
+    editConfirmationMessage.textContent = `修改这条追问会替换本轮 AI 回复，并删除之后的 ${count} 轮追问及回复。确认后可从这里继续追问。`;
+    return new Promise((resolve) => {
+      // 对话框会复用；清除上次 returnValue，避免 Escape 继承之前的确认结果。
+      editConfirmationDialog.returnValue = "";
+      editConfirmationDialog.addEventListener("close", () => {
+        resolve(editConfirmationDialog.returnValue === "confirm");
+      }, { once: true });
+      editConfirmationDialog.showModal();
+      editConfirmationContinue.focus();
+    });
+  };
+
+  const saveEditedTurn = async (turn) => {
+    if (editingTurn !== turn || isGenerating || pendingTurn || isConfirmingEdit) return;
+    const editedText = turn.editorInput.value;
+    if (!editedText.trim()) {
+      status.textContent = "追问内容不能为空。";
+      turn.editorInput.focus();
+      return;
+    }
+    if (editedText === turn.message.textContent) {
+      cancelEditingTurn(turn);
+      return;
+    }
+
+    const turnIndex = followupTurns.indexOf(turn);
+    if (turnIndex < 0) return;
+    const laterTurnCount = followupTurns.length - turnIndex - 1;
+    if (laterTurnCount) {
+      isConfirmingEdit = true;
+      updateComposerState();
+      let confirmed = false;
+      try {
+        confirmed = await confirmLaterTurnRemoval(laterTurnCount);
+      } finally {
+        isConfirmingEdit = false;
+        updateComposerState();
+      }
+      if (!confirmed) return;
+    }
+    if (editingTurn !== turn || isGenerating || pendingTurn) return;
+
+    // 每轮在消息历史中对应一条 user 和一条 assistant；保留被编辑轮之前的上下文。
+    const prefixLength = 2 + turnIndex * 2;
+    if (prefixLength > conversationMessages.length) {
+      status.textContent = "无法定位这条追问的上下文，请重新选择题目后再试。";
+      return;
+    }
+    const messages = [
+      ...conversationMessages.slice(0, prefixLength),
+      { role: "user", content: editedText }
+    ];
+
+    for (let index = turnIndex; index < followupTurns.length; index += 1) {
+      const affectedTurn = followupTurns[index];
+      affectedTurn.assistantElement?.remove();
+      if (index > turnIndex) affectedTurn.element.remove();
+    }
+    followupTurns.splice(turnIndex + 1);
+    turn.message.textContent = editedText;
+    turn.message.hidden = false;
+    turn.editor.hidden = true;
+    turn.editorWarning.hidden = true;
+    turn.editButton.hidden = false;
+    editingTurn = null;
+
+    pendingTurn = { kind: "edit", turnIndex, messages };
+    lastRequest = { kind: "edit", messages };
+    body = createAssistantResponseBody(turn);
+    copyButton.hidden = true;
+    void dispatchFollowup(messages);
   };
 
   const commitPendingTurn = () => {
@@ -1040,11 +1271,14 @@
     retryButton.hidden = true;
     retryButton.disabled = false;
     retryButton.textContent = "重试";
-    status.textContent = pendingTurn?.kind === "followup" ? "正在生成追问回复…" : "正在生成 Markdown 回复…";
+    status.textContent = pendingTurn?.kind === "followup" || pendingTurn?.kind === "edit"
+      ? "正在生成追问回复…"
+      : "正在生成 Markdown 回复…";
     resetStreamState();
     body.replaceChildren();
     body.classList.remove("error");
     body.classList.add("streaming");
+    copyButton.hidden = true;
     updateComposerState();
     scrollToFollowupBottom();
 
@@ -1068,9 +1302,10 @@
     const messages = [...conversationMessages, { role: "user", content: userText }];
     pendingTurn = { kind: "followup", messages };
     lastRequest = { kind: "followup", messages };
-    appendUserTurn(userText);
+    const followupTurn = appendUserTurn(userText);
+    followupTurns.push(followupTurn);
     composerInput.value = "";
-    body = createAssistantResponseBody();
+    body = createAssistantResponseBody(followupTurn);
     void dispatchFollowup(messages);
   };
 
@@ -1089,7 +1324,7 @@
     if (!lastRequest || retryButton.disabled) return;
     retryButton.disabled = true;
     retryButton.textContent = "正在重试…";
-    if (lastRequest.kind === "followup" && pendingTurn) {
+    if ((lastRequest.kind === "followup" || lastRequest.kind === "edit") && pendingTurn) {
       void dispatchFollowup(pendingTurn.messages);
       return;
     }
