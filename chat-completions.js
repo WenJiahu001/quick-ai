@@ -1,10 +1,11 @@
+import { readEventStream } from "./src/shared/event-stream.js";
 import { chatCompletionsEndpoint } from "./config.js";
 
 /**
  * 请求 OpenAI 兼容的 Chat Completions 接口，并逐段交付模型文本。
  * 标签页消息、请求生命周期和超时由后台协调器负责。
  */
-export async function streamChatCompletion({ baseUrl, apiKey, model, systemPrompt, messages, signal, onText }) {
+export async function streamChatCompletion({ baseUrl, apiKey, model, systemPrompt, messages, signal, onText, onConnected }) {
   let response;
   try {
     response = await fetch(chatCompletionsEndpoint(baseUrl), {
@@ -31,6 +32,7 @@ export async function streamChatCompletion({ baseUrl, apiKey, model, systemPromp
 
   if (!response.ok) throw new Error(await describeHttpError(response));
   if (!response.body) throw new Error("API 未返回可读取的流式内容，请稍后重试。");
+  await onConnected?.();
 
   let finishReason = null;
   const doneMarkerReceived = await readEventStream(response.body, async (event) => {
@@ -61,69 +63,6 @@ function extractDeltaText(content) {
     .filter((part) => part && (part.type === "text" || part.type === "output_text") && typeof part.text === "string")
     .map((part) => part.text)
     .join("");
-}
-
-async function readEventStream(body, onEvent, signal) {
-  const reader = body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-  let dataLines = [];
-  let completed = false;
-  let doneMarkerReceived = false;
-
-  const dispatch = async () => {
-    if (!dataLines.length) return false;
-    const data = dataLines.join("\n");
-    dataLines = [];
-    if (data === "[DONE]") {
-      doneMarkerReceived = true;
-      return true;
-    }
-
-    let event;
-    try {
-      event = JSON.parse(data);
-    } catch {
-      throw new Error("AI 服务商返回了无法识别的流式数据。");
-    }
-    await onEvent(event);
-    return false;
-  };
-
-  const consumeLines = async (flush = false) => {
-    const lines = buffer.split(/\r?\n/);
-    buffer = flush ? "" : lines.pop() ?? "";
-    for (const line of lines) {
-      if (line === "") {
-        await dispatch();
-        if (doneMarkerReceived) return true;
-      } else if (line.startsWith("data:")) {
-        dataLines.push(line.slice(5).trimStart());
-      }
-    }
-    if (flush) await dispatch();
-    return doneMarkerReceived;
-  };
-
-  try {
-    while (!doneMarkerReceived) {
-      if (signal.aborted) throw new DOMException("请求已取消", "AbortError");
-      const { value, done } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      await consumeLines();
-    }
-    if (!doneMarkerReceived) {
-      buffer += decoder.decode();
-      await consumeLines(true);
-    }
-    completed = true;
-    return doneMarkerReceived;
-  } finally {
-    // 收到 [DONE] 后尽快关闭响应体，避免继续读取无关数据。
-    if (!completed || doneMarkerReceived) await reader.cancel().catch(() => {});
-    reader.releaseLock();
-  }
 }
 
 async function describeHttpError(response) {

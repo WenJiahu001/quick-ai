@@ -1,0 +1,10 @@
+{
+  "name": "quick-ai",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=18" },
+  "scripts": {
+    "check": "node scripts/check.mjs",
+    "build": "node scripts/package.mjs"
+  }
+}

@@ -1,4 +1,5 @@
-import "./browser-api.js";
+import { isCardOpen, setCardOpen, updateListControls, toggleCards } from "./list-controls.js";
+import "../../browser-api.js";
 
 const extensionApi = globalThis.quickAiBrowserApi;
 
@@ -9,11 +10,6 @@ export function createPromptEditor(elements, showStatus) {
     promptSearchInput,
     addPromptButton,
     togglePromptsButton,
-    cleanupRulesList,
-    cleanupRuleCount,
-    cleanupRuleSearchInput,
-    addCleanupRuleButton,
-    toggleCleanupRulesButton,
     promptDeleteDialog,
     promptDeleteMessage,
     skipPromptDeleteTodayCheckbox
@@ -45,17 +41,6 @@ export function createPromptEditor(elements, showStatus) {
   });
   togglePromptsButton.addEventListener("click", () => toggleCards(promptsList, updatePromptListControls));
   promptSearchInput.addEventListener("input", () => updatePromptListControls(true));
-  addCleanupRuleButton.addEventListener("click", () => {
-    const rules = collectCleanupRules();
-    const rule = { id: crypto.randomUUID(), find: "", replacement: "" };
-    rules.push(rule);
-    cleanupRuleSearchInput.value = "";
-    renderCleanupRules(rules, rule.id);
-    cleanupRulesList.lastElementChild?.querySelector("[data-cleanup-find]")?.focus();
-  });
-  toggleCleanupRulesButton.addEventListener("click", () => toggleCards(cleanupRulesList, updateCleanupRuleListControls));
-  cleanupRuleSearchInput.addEventListener("input", () => updateCleanupRuleListControls(true));
-
   promptsList.addEventListener("click", async (event) => {
     const button = event.target.closest("button");
     if (!button || isPromptDeletePending) return;
@@ -119,22 +104,6 @@ export function createPromptEditor(elements, showStatus) {
   promptsList.addEventListener("input", (event) => {
     const card = event.target.closest(".prompt-card");
     if (card) updatePromptSummary(card);
-  });
-
-  cleanupRulesList.addEventListener("click", (event) => {
-    const button = event.target.closest("[data-remove-cleanup-rule]");
-    if (!button) return;
-    renderCleanupRules(collectCleanupRules().filter((rule) => rule.id !== button.dataset.removeCleanupRule));
-  });
-  cleanupRulesList.addEventListener("change", (event) => {
-    const select = event.target.closest("[data-cleanup-replacement-mode]");
-    const card = event.target.closest(".cleanup-rule-card");
-    if (select) card.querySelector(".cleanup-custom-field").hidden = select.value !== "custom";
-    if (card) updateCleanupRuleSummary(card);
-  });
-  cleanupRulesList.addEventListener("input", (event) => {
-    const card = event.target.closest(".cleanup-rule-card");
-    if (card) updateCleanupRuleSummary(card);
   });
 
   function renderPrompts(prompts, openId = "") {
@@ -221,94 +190,6 @@ export function createPromptEditor(elements, showStatus) {
     updatePromptListControls(true);
   }
 
-  function renderCleanupRules(rules, openId = "") {
-    const previouslyOpen = new Set([...cleanupRulesList.querySelectorAll(".cleanup-rule-card[open]")].map((card) => card.dataset.cleanupRuleId));
-    cleanupRulesList.replaceChildren();
-
-    if (!rules.length) {
-      const emptyState = document.createElement("div");
-      emptyState.className = "list-empty";
-      emptyState.textContent = "还没有清理规则。添加规则后，可以移除题目中的版权说明、网站介绍等固定文字。";
-      cleanupRulesList.append(emptyState);
-    }
-
-    for (const [index, rule] of rules.entries()) {
-      const card = document.createElement("details");
-      card.className = "prompt-card cleanup-rule-card";
-      card.dataset.cleanupRuleId = rule.id || crypto.randomUUID();
-      card.open = card.dataset.cleanupRuleId === openId || previouslyOpen.has(card.dataset.cleanupRuleId);
-
-      const summary = document.createElement("summary");
-      const title = document.createElement("span");
-      title.className = "prompt-card-title";
-      title.textContent = `规则 ${index + 1}`;
-      const findPreview = document.createElement("span");
-      findPreview.className = "cleanup-match-preview";
-      findPreview.dataset.cleanupSummaryFind = "true";
-      const replacementPreview = document.createElement("span");
-      replacementPreview.className = "cleanup-replacement-preview";
-      replacementPreview.dataset.cleanupSummaryReplacement = "true";
-      summary.append(title, findPreview, replacementPreview);
-
-      const findLabel = document.createElement("label");
-      findLabel.className = "field";
-      const findText = document.createElement("span");
-      findText.textContent = "要查找的文字";
-      const findInput = document.createElement("input");
-      findInput.type = "text";
-      findInput.dataset.cleanupFind = "true";
-      findInput.value = rule.find;
-      findLabel.append(findText, findInput);
-
-      const replacementLabel = document.createElement("label");
-      replacementLabel.className = "field";
-      const replacementText = document.createElement("span");
-      replacementText.textContent = "替换为";
-      const replacementSelect = document.createElement("select");
-      replacementSelect.dataset.cleanupReplacementMode = "true";
-      const replacement = String(rule.replacement ?? "");
-      const mode = replacement === "" ? "delete" : replacement === " " ? "space" : replacement === "\n" ? "newline" : "custom";
-      for (const [value, label] of [["delete", "删除"], ["space", "空格"], ["newline", "换行"], ["custom", "自定义"]]) {
-        const option = document.createElement("option");
-        option.value = value;
-        option.textContent = label;
-        replacementSelect.append(option);
-      }
-      replacementSelect.value = mode;
-      replacementLabel.append(replacementText, replacementSelect);
-
-      const customLabel = document.createElement("label");
-      customLabel.className = "field cleanup-custom-field";
-      customLabel.hidden = mode !== "custom";
-      const customText = document.createElement("span");
-      customText.textContent = "自定义替换内容";
-      const customInput = document.createElement("textarea");
-      customInput.rows = 2;
-      customInput.dataset.cleanupReplacementCustom = "true";
-      customInput.value = mode === "custom" ? replacement : "";
-      customLabel.append(customText, customInput);
-
-      const editor = document.createElement("div");
-      editor.className = "prompt-editor";
-      editor.append(findLabel, replacementLabel, customLabel);
-      const editorActions = document.createElement("div");
-      editorActions.className = "prompt-editor-actions";
-      const remove = document.createElement("button");
-      remove.className = "remove-button";
-      remove.type = "button";
-      remove.textContent = "删除规则";
-      remove.dataset.removeCleanupRule = card.dataset.cleanupRuleId;
-      editorActions.append(remove);
-      editor.append(editorActions);
-
-      card.append(summary, editor);
-      card.addEventListener("toggle", () => updateCleanupRuleListControls());
-      cleanupRulesList.append(card);
-      updateCleanupRuleSummary(card);
-    }
-    updateCleanupRuleListControls(true);
-  }
-
   function createPromptAction(iconName, label, promptId, options = {}) {
     const button = document.createElement("button");
     button.className = "prompt-icon-button";
@@ -353,24 +234,6 @@ export function createPromptEditor(elements, showStatus) {
     return svg;
   }
 
-  function isCardOpen(card) {
-    return card.classList.contains("cleanup-rule-card") ? card.open : card.dataset.open === "true";
-  }
-
-  function setCardOpen(card, isOpen) {
-    if (!card) return;
-    if (card.classList.contains("cleanup-rule-card")) {
-      card.open = isOpen;
-      return;
-    }
-    card.dataset.open = String(isOpen);
-    card.classList.toggle("is-open", isOpen);
-    const editor = card.querySelector(".prompt-editor");
-    const toggle = card.querySelector("[data-toggle-prompt]");
-    if (editor) editor.hidden = !isOpen;
-    toggle?.setAttribute("aria-expanded", String(isOpen));
-  }
-
   function updatePromptSummary(card) {
     const name = card.querySelector("[data-prompt-name]").value.trim();
     const content = card.querySelector("[data-prompt-content]").value.slice(0, 160).replace(/\s+/g, " ").trim();
@@ -380,61 +243,8 @@ export function createPromptEditor(elements, showStatus) {
     card.querySelector("[data-prompt-summary-content]").textContent = content || "尚未填写内容";
   }
 
-  function updateCleanupRuleSummary(card) {
-    const find = card.querySelector("[data-cleanup-find]").value.trim().replace(/\s+/g, " ");
-    const mode = card.querySelector("[data-cleanup-replacement-mode]").value;
-    const replacement = mode === "delete"
-      ? "删除匹配内容"
-      : mode === "space"
-        ? "替换为空格"
-        : mode === "newline"
-          ? "替换为换行"
-          : `替换为：${card.querySelector("[data-cleanup-replacement-custom]").value.trim().replace(/\s+/g, " ") || "自定义内容未填写"}`;
-    card.querySelector("[data-cleanup-summary-find]").textContent = find ? `查找：${find}` : "尚未填写匹配文字";
-    card.querySelector("[data-cleanup-summary-replacement]").textContent = replacement;
-  }
-
   function updatePromptListControls(filter = false) {
     updateListControls(promptsList, promptCount, togglePromptsButton, promptSearchInput, "组", filter);
-  }
-
-  function updateCleanupRuleListControls(filter = false) {
-    updateListControls(cleanupRulesList, cleanupRuleCount, toggleCleanupRulesButton, cleanupRuleSearchInput, "条", filter);
-  }
-
-  function updateListControls(list, countElement, toggleButton, searchInput, unit, filter) {
-    const cards = [...list.querySelectorAll(".prompt-card")];
-    const searchLabel = searchInput.closest(".list-search");
-    searchLabel.hidden = cards.length <= 5;
-    if (searchLabel.hidden) searchInput.value = "";
-
-    const query = searchInput.value.trim().toLocaleLowerCase();
-    if (filter) {
-      list.querySelector(".search-empty")?.remove();
-      for (const card of cards) {
-        const values = [...card.querySelectorAll("input, textarea, select")].map((input) => input.value);
-        const summary = card.querySelector(".prompt-card-heading, summary")?.textContent ?? "";
-        card.hidden = Boolean(query) && !`${summary} ${values.join(" ")}`.toLocaleLowerCase().includes(query);
-      }
-      if (query && !cards.some((card) => !card.hidden)) {
-        const emptyState = document.createElement("div");
-        emptyState.className = "list-empty search-empty";
-        emptyState.textContent = "没有找到匹配项，试试其他关键词。";
-        list.append(emptyState);
-      }
-    }
-
-    const visibleCount = cards.filter((card) => !card.hidden).length;
-    countElement.textContent = query ? `显示 ${visibleCount}/${cards.length} ${unit}` : `${cards.length} ${unit}`;
-    toggleButton.disabled = cards.length === 0;
-    toggleButton.textContent = cards.length && cards.every(isCardOpen) ? "全部收起" : "全部展开";
-  }
-
-  function toggleCards(list, updateControls) {
-    const cards = [...list.querySelectorAll(".prompt-card")];
-    const shouldExpand = !cards.length || !cards.every(isCardOpen);
-    for (const card of cards) setCardOpen(card, shouldExpand);
-    updateControls();
   }
 
   function collectPrompts() {
@@ -447,24 +257,6 @@ export function createPromptEditor(elements, showStatus) {
     }));
   }
 
-  function collectCleanupRules() {
-    return [...cleanupRulesList.querySelectorAll(".cleanup-rule-card")].map((card) => {
-      const mode = card.querySelector("[data-cleanup-replacement-mode]").value;
-      const replacement = mode === "space"
-        ? " "
-        : mode === "newline"
-          ? "\n"
-          : mode === "custom"
-            ? card.querySelector("[data-cleanup-replacement-custom]").value
-            : "";
-      return {
-        id: card.dataset.cleanupRuleId,
-        find: card.querySelector("[data-cleanup-find]").value,
-        replacement
-      };
-    });
-  }
-
   function focusPrompt(promptId) {
     promptSearchInput.value = "";
     updatePromptListControls(true);
@@ -472,15 +264,6 @@ export function createPromptEditor(elements, showStatus) {
     setCardOpen(card, true);
     const nameInput = card?.querySelector("[data-prompt-name]");
     (nameInput?.value.trim() ? card.querySelector("[data-prompt-content]") : nameInput)?.focus();
-  }
-
-  function focusCleanupRule(ruleId) {
-    cleanupRuleSearchInput.value = "";
-    updateCleanupRuleListControls(true);
-    const card = [...cleanupRulesList.querySelectorAll(".cleanup-rule-card")].find((item) => item.dataset.cleanupRuleId === ruleId);
-    if (!card) return;
-    card.open = true;
-    card.querySelector("[data-cleanup-find]").focus();
   }
 
   async function shouldSkipPromptDeleteConfirmationToday() {
@@ -521,10 +304,7 @@ export function createPromptEditor(elements, showStatus) {
 
   return {
     renderPrompts,
-    renderCleanupRules,
     collectPrompts,
-    collectCleanupRules,
     focusPrompt,
-    focusCleanupRule
   };
 }

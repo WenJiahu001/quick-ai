@@ -57,6 +57,11 @@
               <small>填写提供 OpenAI 兼容 Chat Completions 接口的服务商 API 根地址，扩展会调用其 /chat/completions 接口。保存时会请求访问该站点的权限。</small>
               <small id="http-warning" class="warning" hidden>HTTP 不加密传输，API Key 和选中文字可能被网络中的其他人读取。只对可信的本机或内网服务使用。</small>
             </label>
+            <div class="connection-check">
+              <button id="check-connection" class="secondary-button" type="button">检查连接</button>
+              <small>使用当前填写的配置发送一次简短 AI 请求，可能产生少量费用；不会自动保存。</small>
+              <p id="connection-status" role="status" aria-live="polite"></p>
+            </div>
           </section>
           <div class="panel-footer">
             <span>只保存 AI 服务商及当前选中项。</span>

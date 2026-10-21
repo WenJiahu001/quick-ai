@@ -4,35 +4,30 @@
 
 本项目是支持 Chromium 浏览器（Edge、Chrome、Brave、Vivaldi、Opera）的 Manifest V3 扩展，无需第三方依赖；运行打包脚本需 Node.js 18 或更新版本：
 
-- `background.js`：右键菜单、请求生命周期、设置读取及权限检查。
-- `browser-api.js`：统一浏览器 API 命名空间，供后台、设置页和注入脚本共用。
-- `chat-completions.js`：OpenAI 兼容 Chat Completions 请求、SSE 解析和错误归一化。
-- `overlay.js`：网页回复浮层、流式显示、Markdown 渲染和交互。
-- `options.html`、`options.css`、`options.js`：设置页面结构、样式、服务商配置和页面协调。
-- `options-prompts.js`：提示词与选中文字清理规则的编辑、列表交互和删除确认。
-- `config.js`：默认配置、Base URL 和提示词处理。
-- `manifest.json`：Chromium 扩展清单。
-- `scripts/package.mjs`：使用 Node.js 内置模块生成 Chromium 安装目录；新增运行时资源时同步更新此脚本的文件清单，`dist/` 为可重建输出。
-- `README.md`：说明打包、安装、接口和数据处理。
-- `vendor/`：本地打包的流式 Markdown 解析器及其来源和许可证。
-- `img/`：README 使用说明截图。
+- `background.js`、`options.js`、`overlay.js`：稳定的加载入口，业务代码放入 `src/`。
+- `src/background/`：浏览器事件分派、菜单刷新、选区读取、请求生命周期、传输和连接检查。
+- `src/options/`：服务商、提示词、清理规则编辑器，以及草稿、连接检查、备份和对话框控制器。
+- `src/overlay/`：会话协调、DOM 视图、样式、安全 Markdown 渲染、流式队列、外观、滚动和几何交互。
+- `src/shared/`：SSE 分帧与 `runtime-files.js`。后者集中维护注入顺序和打包资源。
+- `config.js`、`chat-completions.js`、`browser-api.js`：配置规范化、AI 协议和浏览器 API 入口。
+- `manifest.json`、`options.html`、`options.css`：扩展清单及设置页静态资源。
+- `scripts/`：静态检查、打包和发布；`dist/` 是不提交的可重建输出。
+- `docs/架构说明.md`：模块接口、依赖方向和功能扩展方式；`README.md`：安装与使用说明。
+- `vendor/`：本地流式 Markdown 解析器及许可证；`img/`：使用说明图片。
+- `package.json`：声明 ES 模块和开发命令，无依赖，无需运行安装命令。
 
 新增代码优先沿用现有原生 Web Extension API，不要擅自引入依赖。
 
 ## 开发与验证
 
-运行 `node scripts/package.mjs` 生成 Chromium 扩展目录。Edge、Chrome、Brave、Vivaldi 和 Opera 从各自扩展管理页加载 `dist/chromium/`。修改后重新打包、加载扩展，并刷新已注入 `overlay.js` 的网页。可用 Node.js 检查脚本语法：
+运行以下命令进行静态检查与打包：
 
 ```sh
-node --check background.js
-node --check chat-completions.js
-node --check overlay.js
-node --check options.js
-node --check options-prompts.js
-node --check config.js
-node --check browser-api.js
-node --check scripts/package.mjs
+node scripts/check.mjs
+node scripts/package.mjs
 ```
+
+也可使用 `npm run check` 和 `npm run build`。静态检查覆盖根入口、`src/` 和 `scripts/` 的语法与模块、资源引用，不执行浏览器业务。Edge、Chrome、Brave、Vivaldi 和 Opera 加载 `dist/chromium/`。修改后重新打包、加载扩展，并刷新已注入浮层的网页。
 
 没有自动化测试框架。按改动范围进行针对性验证；不要把语法或打包检查描述为浏览器行为测试。
 
@@ -45,8 +40,16 @@ node --check scripts/package.mjs
 
 ## 架构与安全边界
 
-请求链路为右键菜单 → `background.js` → 当前标签页浮层。只将用户选中文字和所选提示词发送给兼容 Chat Completions 的服务，不读取整页内容。API Key 仅保存在当前浏览器的扩展本地设置并由后台使用；不得传入网页脚本、提交到仓库或写入日志。不同浏览器之间不自动同步设置。保持权限最小化，主机访问权限按配置的 API 来源申请。HTTP 会明文传输密钥和请求内容，只用于可信的本机或内网服务。修改设置项、数据处理方式或权限时，同步检查 `config.js`、`options.js`、`background.js`、`manifest.json` 和 `README.md`。
+请求链路为右键菜单 → `src/background/requests.js` → 当前标签页浮层。初次请求发送选中文字和提示词，追问还会发送完整对话上下文，不读取整页内容。API Key 保存在扩展本地设置并由后台使用；设置页可将连接检查草稿传给后台，但密钥不得进入浮层、日志或仓库。不同浏览器之间不自动同步设置。保持权限最小化，主机访问权限按配置的 API 来源申请。HTTP 会明文传输密钥和请求内容，只用于可信的本机或内网服务。修改设置项、数据处理方式或权限时，同步检查 `config.js`、相关设置页与后台模块、`manifest.json` 和 `README.md`。
+
+## 模块边界
+
+- 后台、设置页使用原生 ES 模块；浮层使用隔离环境中的经典脚本工厂，不动态导入、不新增 `web_accessible_resources`。
+- 工厂通过参数、返回方法和回调协作；会话历史由浮层协调器拥有，渲染器只管理当前轮队列与解析器。不要跨模块修改内部状态。
+- 浮层新脚本加入 `src/shared/runtime-files.js`，按依赖顺序注册。`src/` 整体打包，新增其他运行时资源更新同一清单。
+- 保留请求 ID 隔离、取消语义、已有存储键和兼容迁移；API Key 不进入浮层。Markdown 保持 100ms 调度与单批字符预算，禁止流式期间整篇重建。
+- 调整结构时同步维护 `docs/架构说明.md`，不要只移动文件而留下旧引用。
 
 ## 交付要求
 
-说明改了什么、原因、如何验证及重要限制。涉及数据库字段时附 SQL；涉及权限或敏感数据处理时明确指出影响。Git 提交历史当前不可用，提交信息使用简短、祈使式描述，例如 `fix: 保留浮层尺寸`。
+说明改了什么、原因、如何验证及重要限制。涉及数据库字段时附 SQL；涉及权限或敏感数据处理时明确指出影响。提交历史常用 `feat:`、`fix:` 前缀与中文描述；结构重构可用 `refactor:`。提交信息简短说明改动，例如 `fix: 保留浮层尺寸`。

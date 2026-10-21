@@ -133,6 +133,12 @@ button.prompt-card-heading:hover { color: #172033; background: #f2f6fc; }
 .list-empty { padding: 20px; border: 1px dashed #d5ddea; border-radius: 10px; color: #718097; background: #fbfcfe; font-size: 13px; font-weight: 400; text-align: center; }
 
 .status { min-height: 20px; margin: 12px 0 0; color: #2d6845; font-size: 13px; }
+.settings-tab[data-dirty="true"]::after { content: " · 未保存"; color: #a15b13; font-size: 11px; }
+.panel-footer .dirty-indicator { flex-shrink: 0; color: #a15b13; font-size: 12px; }
+.connection-check { display: grid; justify-items: start; gap: 8px; }
+.connection-check small { color: #657187; line-height: 1.5; }
+#connection-status { margin: 0; font-size: 13px; }
+.confirmation-dialog-actions { flex-wrap: wrap; }
 button {
   min-height: 40px;
   padding: 0 17px;
@@ -174,5 +180,6 @@ button:focus-visible { outline: 3px solid #82a8ff; outline-offset: 2px; }
   .prompt-card > summary::after { grid-column: 2; grid-row: 1 / span 3; }
   .panel-footer { width: calc(100vw - 64px); padding: 10px 12px; }
   .panel-footer span { display: none; }
+  .panel-footer .dirty-indicator { display: inline; }
   .panel-footer button { width: 100%; }
 }

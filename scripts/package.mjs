@@ -1,24 +1,10 @@
 import { cp, mkdir, readFile, rm } from "node:fs/promises";
 import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { PACKAGE_FILES, OVERLAY_SCRIPT_FILES } from "../src/shared/runtime-files.js";
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const outputRoot = resolve(repositoryRoot, "dist");
-const packageFiles = [
-  "LICENSE",
-  "background.js",
-  "browser-api.js",
-  "chat-completions.js",
-  "config.js",
-  "options.html",
-  "options.css",
-  "options.js",
-  "options-prompts.js",
-  "overlay.js",
-  "vendor/streaming-markdown.js",
-  "vendor/streaming-markdown.LICENSE",
-  "vendor/streaming-markdown.NOTICE"
-];
 const requestedTargets = process.argv.slice(2);
 if (requestedTargets.some((targetName) => targetName !== "chromium")) {
   throw new Error("当前仅支持 Chromium 浏览器，可选打包目标：chromium");
@@ -36,11 +22,11 @@ await rm(destination, { recursive: true, force: true });
 await mkdir(destination, { recursive: true });
 
 await cp(resolve(repositoryRoot, "manifest.json"), resolve(destination, "manifest.json"));
-for (const file of packageFiles) {
+for (const file of PACKAGE_FILES) {
   const source = resolve(repositoryRoot, file);
   const packagedFile = resolve(destination, file);
   await mkdir(dirname(packagedFile), { recursive: true });
-  await cp(source, packagedFile);
+  await cp(source, packagedFile, { recursive: true });
 }
 
 const manifest = JSON.parse(await readFile(resolve(destination, "manifest.json"), "utf8"));
@@ -48,9 +34,7 @@ const backgroundFiles = [manifest.background?.service_worker].filter(Boolean);
 const requiredFiles = [
   ...backgroundFiles,
   manifest.options_page,
-  "browser-api.js",
-  "overlay.js",
-  "vendor/streaming-markdown.js"
+  ...OVERLAY_SCRIPT_FILES
 ].filter(Boolean);
 for (const file of requiredFiles) {
   const packagedFile = resolve(destination, file);
