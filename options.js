@@ -352,11 +352,18 @@ async function importSettings() {
       throw new Error("配置文件中的清理规则数据无效。");
     }
     const currentProviders = collectProviders();
-    const keysById = new Map(currentProviders.map((provider) => [provider.id, provider.apiKey]));
-    const providers = normalizeProviders(imported.providers).map((provider) => ({
-      ...provider,
-      apiKey: keysById.get(provider.id) || ""
-    }));
+    const existingById = new Map(currentProviders.map((provider) => [provider.id, provider]));
+    let clearedKeyCount = 0;
+    const providers = normalizeProviders(imported.providers).map((provider) => {
+      const baseUrl = normalizeBaseUrl(provider.baseUrl);
+      const existing = existingById.get(provider.id);
+      let apiKey = "";
+      try {
+        if (existing && normalizeBaseUrl(existing.baseUrl) === baseUrl) apiKey = existing.apiKey;
+      } catch { /* 无效旧地址不能作为密钥复用依据。 */ }
+      if (existing?.apiKey && !apiKey) clearedKeyCount++;
+      return { ...provider, baseUrl, apiKey };
+    });
     const prompts = normalizePrompts(imported.prompts);
     const cleanupRules = normalizeCleanupRules(imported.cleanupRules);
     const active = getActiveProvider(providers, imported.activeProviderId);
@@ -368,7 +375,7 @@ async function importSettings() {
     promptEditor.renderPrompts(prompts);
     promptEditor.renderCleanupRules(cleanupRules);
     activateTab("tab-providers");
-    showStatus("配置已载入页面但尚未保存。请分别打开服务商、提示词和清理规则选项卡并保存；同 ID 服务商沿用本机 API Key。");
+    showStatus(`配置已载入页面但尚未保存。请分别打开服务商、提示词和清理规则选项卡并保存；仅 ID 和 API 地址均相同的服务商沿用本机 API Key。${clearedKeyCount ? `已清空 ${clearedKeyCount} 个地址变更的服务商密钥，请重新填写。` : ""}`);
   } catch (error) {
     showStatus(error.message || "导入配置失败。", true);
   }

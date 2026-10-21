@@ -32,7 +32,8 @@ export async function streamChatCompletion({ baseUrl, apiKey, model, systemPromp
   if (!response.ok) throw new Error(await describeHttpError(response));
   if (!response.body) throw new Error("API 未返回可读取的流式内容，请稍后重试。");
 
-  await readEventStream(response.body, async (event) => {
+  let finishReason = null;
+  const doneMarkerReceived = await readEventStream(response.body, async (event) => {
     if (event.error) {
       const detail = event.error?.message || "模型生成失败，请稍后重试。";
       const code = event.error?.code || event.error?.type || "";
@@ -43,7 +44,14 @@ export async function streamChatCompletion({ baseUrl, apiKey, model, systemPromp
 
     const text = extractDeltaText(event.choices?.[0]?.delta?.content);
     if (text) await onText(text);
+    const reason = event.choices?.[0]?.finish_reason;
+    if (reason != null) finishReason = reason;
   }, signal);
+  if (finishReason === "length") throw new Error("回复达到模型输出长度限制，当前内容不完整。可编辑问题缩小回答范围后重新生成。");
+  if (finishReason === "content_filter") throw new Error("服务商因内容过滤中止了回复，当前内容不完整。请调整问题后重试。");
+  if (finishReason && finishReason !== "stop") throw new Error(`服务商以 ${finishReason} 结束了回复，当前内容不会进入后续对话。请调整问题后重试。`);
+  // 部分兼容接口用 stop 后关闭连接替代 [DONE]，二者都可作为正常完成的依据。
+  if (!doneMarkerReceived && finishReason !== "stop") throw new Error("回复流提前结束，当前内容可能不完整，请重试。");
 }
 
 function extractDeltaText(content) {
@@ -110,6 +118,7 @@ async function readEventStream(body, onEvent, signal) {
       await consumeLines(true);
     }
     completed = true;
+    return doneMarkerReceived;
   } finally {
     // 收到 [DONE] 后尽快关闭响应体，避免继续读取无关数据。
     if (!completed || doneMarkerReceived) await reader.cancel().catch(() => {});

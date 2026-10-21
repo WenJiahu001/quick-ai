@@ -82,8 +82,8 @@ extensionApi.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message?.type === "CANCEL_REQUEST") {
-    const request = activeRequests.get(message.requestId);
-    if (request && request.tabId === sender.tab?.id) request.controller.abort();
+    const request = activeRequests.get(sender.tab?.id);
+    if (request?.requestId === message.requestId) request.controller.abort();
     return;
   }
 
@@ -182,7 +182,7 @@ async function readSelectedText(tabId, frameId, fallbackText) {
         const selection = window.getSelection();
         if (!selection || selection.isCollapsed || selection.rangeCount === 0) return "";
 
-        const fragment = selection.getRangeAt(0).cloneContents();
+        const range = selection.getRangeAt(0);
         const blockTags = new Set([
           "ADDRESS", "ARTICLE", "ASIDE", "BLOCKQUOTE", "CAPTION", "DD", "DETAILS", "DIALOG",
           "DIV", "DL", "DT", "FIELDSET", "FIGCAPTION", "FIGURE", "FOOTER", "FORM",
@@ -200,13 +200,26 @@ async function readSelectedText(tabId, frameId, fallbackText) {
           text += value;
         };
         const visit = (node) => {
+          if (!range.intersectsNode(node)) return;
           if (node.nodeType === 3) {
-            appendText(node.nodeValue ?? "");
+            const value = node.nodeValue ?? "";
+            const start = node === range.startContainer ? range.startOffset : 0;
+            const end = node === range.endContainer ? range.endOffset : value.length;
+            const selected = value.slice(start, end);
+            const whiteSpace = getComputedStyle(node.parentElement).whiteSpace;
+            appendText(/^(pre|break-spaces)/.test(whiteSpace)
+              ? selected
+              : selected.replace(/[\t\r\n ]+/g, " "));
             return;
           }
           if (node.nodeType !== 1 && node.nodeType !== 11) return;
 
           const element = node.nodeType === 1 ? node : null;
+          if (element) {
+            if (["SCRIPT", "STYLE", "TEMPLATE", "NOSCRIPT"].includes(element.tagName)) return;
+            const computed = getComputedStyle(element);
+            if (computed.display === "none" || computed.visibility === "hidden" || computed.contentVisibility === "hidden") return;
+          }
           if (element?.tagName === "BR") {
             if (pendingBlockBreak && text && !text.endsWith("\n")) text += "\n";
             pendingBlockBreak = false;
@@ -219,7 +232,8 @@ async function readSelectedText(tabId, frameId, fallbackText) {
           for (const child of node.childNodes) visit(child);
           if (isBlock) pendingBlockBreak = true;
         };
-        visit(fragment);
+        // 在原始选区内遍历，才能判断真实可见性；文本节点只读取选中的偏移范围。
+        visit(range.commonAncestorContainer);
         return text;
       }
     });
@@ -456,18 +470,18 @@ async function streamResponse({ tabId, requestId, systemPrompt, messages, settin
     }
   }, REQUEST_TIMEOUT_MS);
 
-  try {
-    let pendingText = "";
-    let lastTextFlushAt = Date.now();
-    const flushText = async () => {
-      if (!pendingText) return;
-      const text = pendingText;
-      pendingText = "";
-      lastTextFlushAt = Date.now();
-      if (!isCurrentRequest(tabId, requestId)) return;
-      await sendToTab(tabId, { type: "APPEND_TEXT", requestId, text });
-    };
+  let pendingText = "";
+  let lastTextFlushAt = Date.now();
+  const flushText = async () => {
+    if (!pendingText) return;
+    const text = pendingText;
+    pendingText = "";
+    lastTextFlushAt = Date.now();
+    if (!isCurrentRequest(tabId, requestId)) return;
+    await sendToTab(tabId, { type: "APPEND_TEXT", requestId, text });
+  };
 
+  try {
     await streamChatCompletion({
       baseUrl,
       apiKey: settings.apiKey,
@@ -486,6 +500,8 @@ async function streamResponse({ tabId, requestId, systemPrompt, messages, settin
     await flushText();
     await sendToTab(tabId, { type: "STREAM_DONE", requestId });
   } catch (error) {
+    // 报错前交付尚未达到合并间隔的尾部文本，浮层可保留已生成内容。
+    if ((timedOut || !signal.aborted) && isCurrentRequest(tabId, requestId)) await flushText().catch(() => {});
     if (!timedOut) throw error;
     await sendToTab(tabId, {
       type: isFollowup ? "SHOW_TURN_ERROR" : "SHOW_ERROR",

@@ -53,8 +53,8 @@ export function createPromptEditor(elements, showStatus) {
     renderCleanupRules(rules, rule.id);
     cleanupRulesList.lastElementChild?.querySelector("[data-cleanup-find]")?.focus();
   });
-  toggleCleanupRulesButton.addEventListener("click", () => toggleCards(cleanupRulesList, updateCleanupListControls));
-  cleanupRuleSearchInput.addEventListener("input", () => updateCleanupListControls(true));
+  toggleCleanupRulesButton.addEventListener("click", () => toggleCards(cleanupRulesList, updateCleanupRuleListControls));
+  cleanupRuleSearchInput.addEventListener("input", () => updateCleanupRuleListControls(true));
 
   promptsList.addEventListener("click", async (event) => {
     const button = event.target.closest("button");

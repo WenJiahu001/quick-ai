@@ -126,12 +126,12 @@
               <input id="import-settings-file" class="visually-hidden" type="file" accept="application/json,.json">
             </div>
           </section>
-          <p class="backup-note">API Key 不会写入备份文件。导入后，已有服务商若 ID 相同会保留本机 API Key；新增服务商需要重新填写。</p>
+          <p class="backup-note">API Key 不会写入备份文件。导入后，仅 ID 和 API 地址均相同的服务商保留本机 API Key；新增服务商或地址变更后需要重新填写。</p>
         </section>
       </form>
 
       <p id="save-status" class="status" role="status" aria-live="polite"></p>
-      <p class="privacy-note">每次请求只发送所选提示词和清理后的选中文字，不会读取整页内容。</p>
+      <p class="privacy-note">初次请求发送所选提示词和清理后的选中文字；追问还会发送本次对话的完整历史。内容发送给当前选中的 AI 服务商，不会读取整页内容。</p>
     </main>
 
     <dialog id="delete-prompt-dialog" class="confirmation-dialog" aria-labelledby="delete-prompt-title" aria-describedby="delete-prompt-message">

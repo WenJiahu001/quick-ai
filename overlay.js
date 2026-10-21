@@ -97,6 +97,8 @@
     .reading-area { flex:1; min-height:0; overflow:auto; border-top:1px solid var(--divider); }
     .transcript { padding:0 0 8px; }
     .assistant-turn { padding-top:10px; }
+    .assistant-turn > summary { cursor:pointer; list-style-position:inside; }
+    .assistant-turn:not([open]) > summary::after { content:" · 点击展开回复"; font-weight:400; }
     .turn-label { margin:0 16px 2px; color:var(--muted-text); font-size:11px; font-weight:650; }
     .user-turn { margin:12px 16px 0; }
     .user-turn-heading { display:flex; align-items:center; justify-content:space-between; min-height:24px; margin-bottom:2px; }
@@ -467,6 +469,8 @@
   let receivedStreamCharacters = 0;
   let responseTruncated = false;
   let streamDoneReceived = false;
+  let streamFailureMessage = "";
+  let followupScrollFrame = 0;
   const STREAM_RENDER_INTERVAL_MS = 100;
   const MAX_STREAM_CHARS_PER_TICK = 2_048;
   const MAX_RESPONSE_CHARS = 250_000;
@@ -489,6 +493,11 @@
 
   const applyAppearance = () => {
     card.dataset.theme = appearance.theme;
+    // 确认框是 card 的兄弟节点，显式同步其需要的主题变量。
+    const colors = getComputedStyle(card);
+    for (const name of ["--card-bg", "--card-text", "--muted-text", "--control-bg", "--control-border", "--accent"]) {
+      editConfirmationDialog.style.setProperty(name, colors.getPropertyValue(name));
+    }
     card.style.setProperty("--answer-font-size", `${appearance.fontSize}px`);
     fontSizeSlider.value = String(appearance.fontSize);
     fontSizeValue.textContent = `${appearance.fontSize}px`;
@@ -570,17 +579,22 @@
     receivedStreamCharacters = 0;
     responseTruncated = false;
     streamDoneReceived = false;
+    streamFailureMessage = "";
   };
 
   const scrollToFollowupBottom = () => {
-    if (!followupAutoScroll || readingArea.clientHeight === 0) return;
-    readingArea.scrollTop = readingArea.scrollHeight;
+    if (!followupAutoScroll || followupScrollFrame) return;
+    followupScrollFrame = requestAnimationFrame(() => {
+      followupScrollFrame = 0;
+      if (followupAutoScroll && !card.hidden) readingArea.scrollTop = readingArea.scrollHeight;
+    });
   };
 
   const createAssistantResponseBody = (followupTurn = null) => {
-    const turn = document.createElement("section");
+    const turn = document.createElement("details");
     turn.className = "assistant-turn";
-    const label = document.createElement("div");
+    turn.open = true;
+    const label = document.createElement("summary");
     label.className = "turn-label";
     label.textContent = "AI";
     const responseBody = document.createElement("div");
@@ -588,6 +602,9 @@
     responseBody.setAttribute("aria-live", "polite");
     turn.append(label, responseBody);
     transcript.append(turn);
+    // 只自动展开最近两轮回复，旧轮保留在内存与上下文中，可手动展开。
+    const assistantTurns = [...transcript.querySelectorAll(".assistant-turn")];
+    for (const previous of assistantTurns.slice(0, -2)) previous.open = false;
     if (followupTurn) followupTurn.assistantElement = turn;
     return responseBody;
   };
@@ -673,14 +690,15 @@
   };
 
   const updateComposerState = () => {
-    composer.hidden = !conversationReady;
+    composer.hidden = !currentRequestId;
     const disabled = isGenerating || Boolean(pendingTurn) || Boolean(editingTurn);
-    composerInput.disabled = disabled;
-    sendButton.disabled = disabled || !composerInput.value.trim();
+    composerInput.disabled = Boolean(editingTurn);
+    sendButton.disabled = !conversationReady || disabled || !composerInput.value.trim();
+    retryButton.disabled = isGenerating || Boolean(editingTurn) || isConfirmingEdit;
     for (const turn of followupTurns) {
-      turn.editButton.disabled = isGenerating || Boolean(pendingTurn) || isConfirmingEdit || Boolean(editingTurn && editingTurn !== turn);
-      turn.saveEditButton.disabled = isGenerating || Boolean(pendingTurn) || isConfirmingEdit;
-      turn.cancelEditButton.disabled = isGenerating || Boolean(pendingTurn) || isConfirmingEdit;
+      turn.editButton.disabled = isGenerating || isConfirmingEdit || Boolean(editingTurn && editingTurn !== turn);
+      turn.saveEditButton.disabled = isGenerating || isConfirmingEdit;
+      turn.cancelEditButton.disabled = isGenerating || isConfirmingEdit;
     }
   };
 
@@ -695,6 +713,8 @@
     conversationReady = false;
     isGenerating = false;
     followupAutoScroll = false;
+    cancelAnimationFrame(followupScrollFrame);
+    followupScrollFrame = 0;
     lastRequest = null;
     composerInput.value = "";
     updateComposerState();
@@ -702,7 +722,7 @@
   };
 
   const beginEditingTurn = (turn) => {
-    if (!conversationReady || isGenerating || pendingTurn || isConfirmingEdit || (editingTurn && editingTurn !== turn)) return;
+    if (!conversationReady || isGenerating || isConfirmingEdit || (editingTurn && editingTurn !== turn)) return;
     const turnIndex = followupTurns.indexOf(turn);
     if (turnIndex < 0) return;
 
@@ -722,7 +742,7 @@
   };
 
   const cancelEditingTurn = (turn) => {
-    if (editingTurn !== turn || isGenerating || pendingTurn) return;
+    if (editingTurn !== turn || isGenerating || isConfirmingEdit) return;
     turn.message.hidden = false;
     turn.editButton.hidden = false;
     turn.editor.hidden = true;
@@ -746,14 +766,14 @@
   };
 
   const saveEditedTurn = async (turn) => {
-    if (editingTurn !== turn || isGenerating || pendingTurn || isConfirmingEdit) return;
+    if (editingTurn !== turn || isGenerating || isConfirmingEdit) return;
     const editedText = turn.editorInput.value;
     if (!editedText.trim()) {
       status.textContent = "追问内容不能为空。";
       turn.editorInput.focus();
       return;
     }
-    if (editedText === turn.message.textContent) {
+    if (editedText === turn.message.textContent && !pendingTurn) {
       cancelEditingTurn(turn);
       return;
     }
@@ -773,7 +793,7 @@
       }
       if (!confirmed) return;
     }
-    if (editingTurn !== turn || isGenerating || pendingTurn) return;
+    if (editingTurn !== turn || isGenerating) return;
 
     // 每轮在消息历史中对应一条 user 和一条 assistant；保留被编辑轮之前的上下文。
     const prefixLength = 2 + turnIndex * 2;
@@ -785,6 +805,7 @@
       ...conversationMessages.slice(0, prefixLength),
       { role: "user", content: editedText }
     ];
+    conversationMessages = conversationMessages.slice(0, prefixLength);
 
     for (let index = turnIndex; index < followupTurns.length; index += 1) {
       const affectedTurn = followupTurns[index];
@@ -934,7 +955,7 @@
   };
 
   const queueStreamText = (value) => {
-    if (!value || responseTruncated || streamFinalized) return;
+    if (!value || responseTruncated || streamFinalized || streamFailureMessage) return;
     const remaining = MAX_RESPONSE_CHARS - receivedStreamCharacters;
     const accepted = value.slice(0, Math.max(0, remaining));
     if (accepted) {
@@ -976,7 +997,7 @@
     scrollToFollowupBottom();
     streamParser = null;
     body.classList.remove("streaming");
-    const completed = commitPendingTurn();
+    const completed = !streamFailureMessage && commitPendingTurn();
     if (completed) {
       retryButton.hidden = true;
       status.textContent = "生成完成";
@@ -985,14 +1006,16 @@
       retryButton.hidden = false;
       retryButton.disabled = false;
       retryButton.textContent = "重试";
-      if (responseTruncated) {
+      if (responseTruncated || (streamFailureMessage && fullText)) {
         body.classList.remove("error");
       } else {
         body.classList.add("error");
-        body.textContent = "模型没有返回文字内容，请重试。";
+        body.textContent = streamFailureMessage || "模型没有返回文字内容，请重试。";
       }
       status.classList.add("error");
-      status.textContent = responseTruncated
+      status.textContent = streamFailureMessage
+        ? `${streamFailureMessage}${fullText ? " 已保留部分回复（未完成），不会进入后续对话。" : ""}`
+        : responseTruncated
         ? "回复超过安全长度上限，当前不完整内容不会进入后续对话。"
         : "模型没有返回文字内容，请重试。";
     }
@@ -1035,15 +1058,17 @@
     syncRestoreButtonPosition();
   };
 
-  const saveBounds = () => {
+  const saveBounds = (immediate = false) => {
     if (card.hidden) return;
     clearTimeout(boundsSaveTimer);
-    boundsSaveTimer = window.setTimeout(() => {
+    const persist = () => {
       if (card.hidden) return;
       const rect = card.getBoundingClientRect();
       const bounds = { version: 2, width: rect.width, height: rect.height, left: rect.left, top: rect.top };
       extensionApi.storage.local.set({ [boundsStorageKey]: bounds }).catch(() => {});
-    }, 120);
+    };
+    if (immediate) persist();
+    else boundsSaveTimer = window.setTimeout(persist, 120);
   };
 
   const resizeFromCorner = (corner, start, deltaX, deltaY) => {
@@ -1203,7 +1228,10 @@
   });
 
   const setCollapsed = (collapsed) => {
-    if (collapsed) syncRestoreButtonPosition();
+    if (collapsed) {
+      saveBounds(true);
+      syncRestoreButtonPosition();
+    }
     isCollapsed = collapsed;
     if (collapsed) {
       displaySettings.hidden = true;
@@ -1243,23 +1271,14 @@
   }, true);
 
   const showTurnError = (message) => {
-    clearTimeout(streamRenderTimer);
-    streamRenderTimer = 0;
-    resetStreamState();
-    spinner.hidden = true;
-    body.replaceChildren();
-    body.textContent = message || "追问失败，请重试。";
-    body.classList.add("error");
-    body.classList.remove("streaming");
-    status.classList.remove("error");
-    status.textContent = "";
-    scrollToFollowupBottom();
-    copyButton.hidden = true;
-    retryButton.hidden = false;
-    retryButton.disabled = false;
-    retryButton.textContent = "重试";
-    isGenerating = false;
-    updateComposerState();
+    if (streamFinalized) return;
+    streamFailureMessage = message || "请求失败，请重试。";
+    streamDoneReceived = true;
+    status.textContent = streamFailureMessage;
+    status.classList.add("error");
+    // 继续按预算渲染已收到的文本，避免错误时同步重建长回复。
+    if (pendingStreamCharacters > 0) scheduleStreamingUpdate();
+    else startFinalMarkdownRender();
   };
 
   const dispatchFollowup = async (messages) => {
@@ -1295,7 +1314,7 @@
   };
 
   const submitFollowup = async () => {
-    if (!conversationReady || isGenerating || pendingTurn) return;
+    if (!conversationReady || isGenerating || pendingTurn || editingTurn) return;
     const userText = composerInput.value;
     if (!userText.trim()) return;
 
@@ -1342,9 +1361,9 @@
   });
 
   const closeOverlay = () => {
-    saveBounds();
+    saveBounds(true);
     if (currentRequestId && spinner.hidden === false) {
-      extensionApi.runtime.sendMessage({ type: "CANCEL_REQUEST", requestId: currentRequestId });
+      void extensionApi.runtime.sendMessage({ type: "CANCEL_REQUEST", requestId: currentRequestId }).catch(() => {});
     }
     clearTimeout(streamRenderTimer);
     streamRenderTimer = 0;
