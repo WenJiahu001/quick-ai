@@ -1,5 +1,6 @@
 import { isCardOpen, setCardOpen, updateListControls, toggleCards } from "./list-controls.js";
 import "../../browser-api.js";
+import { MAX_CONFIG_ITEMS } from "../shared/limits.js";
 
 const extensionApi = globalThis.quickAiBrowserApi;
 
@@ -30,6 +31,7 @@ export function createPromptEditor(elements, showStatus) {
 
   addPromptButton.addEventListener("click", () => {
     const prompts = collectPrompts();
+    if (prompts.length >= MAX_CONFIG_ITEMS) { showStatus(`最多保留 ${MAX_CONFIG_ITEMS} 组提示词。`, true); return; }
     const prompt = { id: crypto.randomUUID(), name: "新提示词", content: "", enabled: true };
     prompts.push(prompt);
     promptSearchInput.value = "";
@@ -88,6 +90,7 @@ export function createPromptEditor(elements, showStatus) {
     } else if (button.hasAttribute("data-toggle-enabled")) {
       prompts[index].enabled = !prompts[index].enabled;
     } else if (button.hasAttribute("data-copy-prompt")) {
+      if (prompts.length >= MAX_CONFIG_ITEMS) { showStatus(`最多保留 ${MAX_CONFIG_ITEMS} 组提示词。`, true); return; }
       const source = prompts[index];
       const copy = { ...source, id: crypto.randomUUID(), name: `${source.name} 副本`.slice(0, 60), favorite: false, enabled: true };
       prompts.splice(index + 1, 0, copy);
@@ -107,10 +110,29 @@ export function createPromptEditor(elements, showStatus) {
   });
 
   function renderPrompts(prompts, openId = "") {
+    const focused = promptsList.contains(document.activeElement) ? document.activeElement : null;
     const previouslyOpen = new Set([...promptsList.querySelectorAll('.prompt-card[data-open="true"]')].map((card) => card.dataset.promptId));
-    promptsList.replaceChildren();
+    const existing = new Map([...promptsList.querySelectorAll(".prompt-card")].map((card) => [card.dataset.promptId, card]));
+    promptsList.querySelector(".search-empty")?.remove();
 
     for (const [index, prompt] of prompts.entries()) {
+      const reused = existing.get(prompt.id);
+      if (reused) {
+        existing.delete(prompt.id);
+        const name = reused.querySelector("[data-prompt-name]");
+        const content = reused.querySelector("[data-prompt-content]");
+        if (name.value.trim() !== prompt.name) name.value = prompt.name;
+        if (content.value.trim() !== prompt.content) content.value = prompt.content;
+        reused.dataset.promptIndex = String(index + 1);
+        reused.dataset.favorite = String(prompt.favorite === true);
+        reused.dataset.enabled = String(prompt.enabled !== false);
+        reused.classList.toggle("is-disabled", prompt.enabled === false);
+        syncPromptActions(reused, prompt, index, prompts.length);
+        setCardOpen(reused, prompt.id === openId || previouslyOpen.has(prompt.id));
+        if (promptsList.children[index] !== reused) promptsList.insertBefore(reused, promptsList.children[index] || null);
+        updatePromptSummary(reused);
+        continue;
+      }
       const card = document.createElement("section");
       card.className = "prompt-card";
       card.dataset.promptId = prompt.id || crypto.randomUUID();
@@ -143,7 +165,7 @@ export function createPromptEditor(elements, showStatus) {
 
       const editor = document.createElement("div");
       editor.className = "prompt-editor";
-      editor.id = `prompt-editor-${index}`;
+      editor.id = `prompt-editor-${crypto.randomUUID()}`;
       heading.setAttribute("aria-controls", editor.id);
 
       const actions = document.createElement("div");
@@ -184,10 +206,31 @@ export function createPromptEditor(elements, showStatus) {
       editor.append(nameLabel, contentLabel);
       card.append(header, editor);
       setCardOpen(card, card.dataset.promptId === openId || previouslyOpen.has(card.dataset.promptId));
-      promptsList.append(card);
+      promptsList.insertBefore(card, promptsList.children[index] || null);
       updatePromptSummary(card);
     }
+    for (const obsolete of existing.values()) obsolete.remove();
     updatePromptListControls(true);
+    if (focused?.isConnected && !focused.disabled && !focused.closest("[hidden]")) focused.focus({ preventScroll: true });
+    promptsList.dispatchEvent(new Event("settingschange", { bubbles: true }));
+  }
+
+  function syncPromptActions(card, prompt, index, total) {
+    for (const [selector, active, icon, label] of [
+      ["[data-toggle-favorite]", prompt.favorite === true, "favorite", prompt.favorite ? "取消常用" : "设为常用"],
+      ["[data-toggle-enabled]", prompt.enabled !== false, prompt.enabled === false ? "disabled" : "enabled", prompt.enabled === false ? "启用提示词" : "禁用提示词"]
+    ]) {
+      const button = card.querySelector(selector);
+      if (button.getAttribute("aria-pressed") === String(active)) continue;
+      button.setAttribute("aria-pressed", String(active));
+      button.setAttribute("aria-label", label);
+      button.title = label;
+      button.classList.toggle("is-active", active);
+      button.replaceChildren(createPromptIcon(icon, active));
+    }
+    card.querySelector('[data-move-prompt="-1"]').disabled = index === 0;
+    card.querySelector('[data-move-prompt="1"]').disabled = index === total - 1;
+    card.querySelector("[data-remove-prompt]").disabled = total <= 1;
   }
 
   function createPromptAction(iconName, label, promptId, options = {}) {

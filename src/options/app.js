@@ -3,8 +3,9 @@ import { createCleanupEditor } from "./cleanup-editor.js";
 import { createDraftController } from "./drafts.js";
 import { createConnectionCheck } from "./connection-check.js";
 import { createBackupController } from "./backup.js";
+import { askBeforeLeaving } from "./dialogs.js";
+import { assertConfigurationSize } from "../shared/limits.js";
 import {
-  DEFAULT_PROMPTS,
   baseUrlOriginPattern,
   getActiveProvider,
   normalizeBaseUrl,
@@ -27,6 +28,26 @@ const importFileInput = document.querySelector("#import-settings-file");
 const tabButtons = [...document.querySelectorAll('[role="tab"]')];
 const tabPanels = [...document.querySelectorAll('[role="tabpanel"]')];
 const sectionSavers = { providers: saveProviders, prompts: savePrompts, cleanup: saveCleanupRules };
+let settingsLoaded = false;
+let loading = false;
+let revisions = {};
+const reloadButton = document.createElement("button");
+reloadButton.type = "button";
+reloadButton.className = "secondary-button";
+reloadButton.textContent = "重新读取配置";
+const reloadNotice = document.createElement("p");
+reloadNotice.setAttribute("role", "status");
+reloadNotice.className = "warning";
+reloadNotice.hidden = true;
+form.before(reloadButton, reloadNotice);
+reloadButton.addEventListener("click", async () => {
+  if (Object.keys(sectionSavers).some(drafts.isSaving)) return;
+  if (Object.keys(sectionSavers).some(drafts.isDirty)) {
+    const answer = await askBeforeLeaving("重新读取配置？", "这会覆盖当前页面中的草稿。需要保留时，请先导出配置。", [["cancel", "取消"], ["reload", "重新读取"]]);
+    if (answer !== "reload") return;
+  }
+  await loadSettings();
+});
 
 const providerEditor = createProviderEditor({ showStatus });
 const promptEditor = createPromptEditor({
@@ -63,7 +84,6 @@ const drafts = createDraftController({
     prompts: () => promptEditor.collectPrompts(),
     cleanup: () => cleanupEditor.collectCleanupRules()
   },
-  observedLists: [document.querySelector("#provider-select"), document.querySelector("#prompts-list"), document.querySelector("#cleanup-rules-list")],
   onProvidersChanged: () => connection.invalidate()
 });
 const backup = createBackupController({
@@ -106,24 +126,56 @@ for (const tab of tabButtons) {
 }
 
 async function loadSettings() {
+  if (loading) return;
+  loading = true;
+  settingsLoaded = false;
+  form.inert = true;
+  reloadButton.disabled = true;
+  connection.disable();
   try {
-    const stored = await extensionApi.storage.local.get(null);
+    const result = await extensionApi.runtime.sendMessage({ type: "READ_SETTINGS" });
+    if (!result?.ok) throw new Error(result?.message || "后台未返回配置，请重新加载扩展后重试。");
+    const stored = result.values;
     providerEditor.load(normalizeProviders(stored.providers, stored), stored.activeProviderId);
     promptEditor.renderPrompts(normalizePrompts(stored.prompts, stored.prompt));
     cleanupEditor.renderCleanupRules(normalizeCleanupRules(stored.cleanupRules));
-  } catch {
-    providerEditor.load(normalizeProviders([], {}));
-    promptEditor.renderPrompts(DEFAULT_PROMPTS.map((prompt) => ({ ...prompt })));
-    cleanupEditor.renderCleanupRules([]);
-    showStatus("读取设置失败，请重新打开此页面。", true);
-  } finally {
+    revisions = result.revisions;
+    settingsLoaded = true;
+    form.inert = false;
     drafts.initialize();
     connection.enable();
+    reloadNotice.hidden = true;
+    showStatus("");
+  } catch (error) {
+    reloadNotice.hidden = false;
+    reloadNotice.textContent = `${error.message || "读取设置失败。"} 保存已禁用，请点击“重新读取配置”。`;
+  } finally {
+    loading = false;
+    reloadButton.disabled = false;
   }
 }
 
+extensionApi.storage.onChanged.addListener((changes, area) => {
+  if (area !== "local" || !settingsLoaded || !changes.quickAiSettingsRevisions) return;
+  const latest = changes.quickAiSettingsRevisions.newValue || {};
+  if (Object.keys(sectionSavers).some((section) => !drafts.isSaving(section) && (latest[section] || 0) !== (revisions[section] || 0))) {
+    reloadNotice.hidden = false;
+    reloadNotice.textContent = "其他设置页已更新配置。当前草稿已保留；保存时会检查冲突，可先导出草稿再重新读取。";
+  }
+});
+
+async function persistSection(section, value) {
+  assertConfigurationSize({ [section]: value?.providers || value });
+  const result = await extensionApi.runtime.sendMessage({ type: "SAVE_SETTINGS_SECTION", section, value, revision: revisions[section] || 0 });
+  if (!result?.ok) {
+    if (result?.conflict) { reloadNotice.hidden = false; reloadNotice.textContent = result.message; }
+    throw new Error(result?.message || "后台未确认保存，请重新加载扩展后重试。");
+  }
+  revisions[section] = result.revision;
+}
+
 async function saveProviders() {
-  if (drafts.isSaving("providers")) return false;
+  if (!settingsLoaded || drafts.isSaving("providers")) return false;
   const submittedSnapshot = drafts.snapshot("providers");
   showStatus("");
   const providers = providerEditor.collect();
@@ -162,11 +214,8 @@ async function saveProviders() {
       return;
     }
 
-    const old = await extensionApi.storage.local.get(null);
-    await extensionApi.storage.local.set({ providers, activeProviderId: activeProvider.id });
+    await persistSection("providers", { providers, activeProviderId: activeProvider.id });
     drafts.markSaved("providers", submittedSnapshot);
-    await extensionApi.storage.local.remove(["apiKey", "model", "baseUrl", "OPENAI_BASE_URL"]);
-    await removeUnusedProviderPermissions(old.providers, old, providers);
     showStatus("AI 服务商配置已保存。");
     return true;
   } catch (error) {
@@ -179,7 +228,7 @@ async function saveProviders() {
 }
 
 async function savePrompts() {
-  if (drafts.isSaving("prompts")) return false;
+  if (!settingsLoaded || drafts.isSaving("prompts")) return false;
   const submittedSnapshot = drafts.snapshot("prompts");
   showStatus("");
   const prompts = promptEditor.collectPrompts();
@@ -193,9 +242,8 @@ async function savePrompts() {
   savePromptsButton.disabled = true;
   drafts.beginSave("prompts");
   try {
-    await extensionApi.storage.local.set({ prompts });
+    await persistSection("prompts", prompts);
     drafts.markSaved("prompts", submittedSnapshot);
-    await extensionApi.storage.local.remove("prompt").catch(() => {});
     // 显式通知后台重建菜单；storage.onChanged 同时作为其他写入来源的兜底。
     const refreshResult = await extensionApi.runtime.sendMessage({ type: "REFRESH_CONTEXT_MENUS" }).catch(() => null);
     showStatus(refreshResult?.ok
@@ -212,7 +260,7 @@ async function savePrompts() {
 }
 
 async function saveCleanupRules() {
-  if (drafts.isSaving("cleanup")) return false;
+  if (!settingsLoaded || drafts.isSaving("cleanup")) return false;
   const submittedSnapshot = drafts.snapshot("cleanup");
   showStatus("");
   const cleanupRules = cleanupEditor.collectCleanupRules();
@@ -226,7 +274,7 @@ async function saveCleanupRules() {
   saveCleanupButton.disabled = true;
   drafts.beginSave("cleanup");
   try {
-    await extensionApi.storage.local.set({ cleanupRules });
+    await persistSection("cleanup", cleanupRules);
     drafts.markSaved("cleanup", submittedSnapshot);
     showStatus("选中文字清理规则已保存。");
     return true;
@@ -236,23 +284,6 @@ async function saveCleanupRules() {
     saveCleanupButton.disabled = false;
     drafts.endSave("cleanup");
     drafts.update();
-  }
-}
-
-async function removeUnusedProviderPermissions(oldProviderValues, legacySettings, currentProviders) {
-  const oldProviders = normalizeProviders(oldProviderValues, legacySettings);
-  const retainedPatterns = new Set();
-  const oldPatterns = new Set();
-  for (const provider of currentProviders) {
-    try { retainedPatterns.add(baseUrlOriginPattern(normalizeBaseUrl(provider.baseUrl))); } catch { /* 保存前已校验；保留防御性处理。 */ }
-  }
-  for (const provider of oldProviders) {
-    try { oldPatterns.add(baseUrlOriginPattern(normalizeBaseUrl(provider.baseUrl))); } catch { /* 忽略旧配置中的无效地址。 */ }
-  }
-  for (const oldPattern of oldPatterns) {
-    if (!retainedPatterns.has(oldPattern)) {
-      await extensionApi.permissions.remove({ origins: [oldPattern] }).catch(() => false);
-    }
   }
 }
 

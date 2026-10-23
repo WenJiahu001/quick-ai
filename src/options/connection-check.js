@@ -50,6 +50,7 @@ export function createConnectionCheck({ extensionApi, connectionButton, connecti
 
   return {
     enable() { ready = true; connectionButton.disabled = false; },
+    disable() { ready = false; clearConnectionResult(); connectionButton.disabled = true; },
     invalidate() {
       if (checkingConnectionSnapshot && snapshot() !== checkingConnectionSnapshot) clearConnectionResult();
     }

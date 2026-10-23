@@ -2,7 +2,7 @@
   const modules = globalThis.__quickAiOverlayModules ||= {};
   // 每轮独享渲染队列；完成回调只在队列排空后触发，reset 取消旧任务且不触发回调。
   if (modules.createStreamRenderer) return;
-  modules.createStreamRenderer = ({ getBody, status, spinner, copyButton, onScroll, onComplete, onLimit }) => {
+  modules.createStreamRenderer = ({ getBody, status, spinner, copyButton, onScroll, onComplete, onLimit, onBatch = () => {} }) => {
     const createSafeStreamingRenderer = modules.createSafeStreamingRenderer;
     let fullText = "";
     let fullTextParts = [];
@@ -20,9 +20,12 @@
     let responseTruncated = false;
     let streamDoneReceived = false;
     let streamFailureMessage = "";
+    let paused = false;
     const STREAM_RENDER_INTERVAL_MS = 100;
     const MAX_STREAM_CHARS_PER_TICK = 2_048;
     const MAX_RESPONSE_CHARS = 250_000;
+    const PARSE_SLICE_CHARS = 256;
+    const RENDER_BUDGET_MS = 6;
     const resetStreamState = () => {
       clearTimeout(streamRenderTimer);
       streamRenderTimer = 0;
@@ -97,7 +100,7 @@
     };
 
     const scheduleStreamingUpdate = () => {
-      if (streamRenderTimer || streamFinalized) return;
+      if (streamRenderTimer || streamFinalized || paused) return;
       streamRenderTimer = window.setTimeout(() => {
         streamRenderTimer = 0;
         flushPendingStreamText();
@@ -135,8 +138,12 @@
     };
 
     const flushPendingStreamText = () => {
-      if (pendingStreamCharacters > 0) {
-        const text = takePendingStreamText(MAX_STREAM_CHARS_PER_TICK);
+      if (paused) return;
+      const startedAt = performance.now();
+      let remainingBudget = MAX_STREAM_CHARS_PER_TICK;
+      while (pendingStreamCharacters > 0 && remainingBudget > 0 && performance.now() - startedAt < RENDER_BUDGET_MS) {
+        const text = takePendingStreamText(Math.min(PARSE_SLICE_CHARS, remainingBudget));
+        remainingBudget -= text.length;
         if (text) {
           const parserWasUnavailable = streamParserUnavailable;
           if (ensureStreamingParser()) {
@@ -148,9 +155,10 @@
           } else if (parserWasUnavailable) {
             appendPlainStreamingText(text);
           }
-          onScroll();
         }
       }
+      onBatch(performance.now() - startedAt, pendingStreamCharacters);
+      onScroll();
 
       if (pendingStreamCharacters > 0) {
         scheduleStreamingUpdate();
@@ -187,6 +195,7 @@
       spinner.hidden = true;
       copyButton.hidden = !fullText;
 
+      const startedAt = performance.now();
       if (ensureStreamingParser()) {
         try {
           globalThis.__quickAiStreamingMarkdown.parser_end(streamParser);
@@ -197,13 +206,21 @@
           return;
         }
       }
+      onBatch(performance.now() - startedAt, 0);
       onScroll();
       streamParser = null;
+      fullTextParts = [];
+      pendingStreamChunks = [];
       getBody().classList.remove("streaming");
       onComplete();
     };
     return {
       reset: resetStreamState,
+      setPaused(value) {
+        paused = value;
+        if (paused) { clearTimeout(streamRenderTimer); streamRenderTimer = 0; }
+        else if (pendingStreamCharacters > 0 || streamDoneReceived) scheduleStreamingUpdate();
+      },
       append: queueStreamText,
       finish(error = "") {
         if (streamFinalized) return;
@@ -211,7 +228,7 @@
         if (error) streamFailureMessage = error;
         streamDoneReceived = true;
         if (pendingStreamCharacters > 0) scheduleStreamingUpdate();
-        else startFinalMarkdownRender();
+        else if (!paused) startFinalMarkdownRender();
       },
       get text() { return fullText; },
       get receivedCharacters() { return receivedStreamCharacters; },

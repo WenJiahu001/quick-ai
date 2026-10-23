@@ -1,4 +1,5 @@
 import { DEFAULT_SETTINGS, getActiveProvider } from "../../config.js";
+import { MAX_CONFIG_ITEMS } from "../shared/limits.js";
 
 export function createProviderEditor({ showStatus }) {
   const apiKeyInput = document.querySelector("#api-key");
@@ -23,6 +24,7 @@ export function createProviderEditor({ showStatus }) {
   });
   addProviderButton.addEventListener("click", () => {
     providerProfiles = collectProviders();
+    if (providerProfiles.length >= MAX_CONFIG_ITEMS) { showStatus(`最多保留 ${MAX_CONFIG_ITEMS} 个服务商。`, true); return; }
     const provider = {
       id: crypto.randomUUID(),
       name: `服务商 ${providerProfiles.length + 1}`,
@@ -70,6 +72,7 @@ export function createProviderEditor({ showStatus }) {
     providerCount.textContent = `${providerProfiles.length} 组`;
     removeProviderButton.disabled = providerProfiles.length <= 1;
     updateHttpWarning();
+    providerSelect.dispatchEvent(new Event("settingschange", { bubbles: true }));
   }
 
   function collectProviders() {

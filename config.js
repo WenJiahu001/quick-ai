@@ -1,3 +1,5 @@
+import { MAX_INPUT_CHARS, MAX_CONFIG_ITEMS } from "./src/shared/limits.js";
+
 export const DEFAULT_PROMPT = "请用清晰易懂的中文解释以下文字，概括核心意思，并补充必要背景；如果存在歧义，请指出。";
 
 export const DEFAULT_PROMPTS = Object.freeze([
@@ -119,10 +121,19 @@ export function normalizeCleanupRules(value) {
 
 export function applyCleanupRules(value, rules) {
   let cleanedText = String(value ?? "");
+  if (cleanedText.length > MAX_INPUT_CHARS || rules.length > MAX_CONFIG_ITEMS) throw new Error("选中文字或清理规则过多，请精简后重试。");
   for (const rule of rules) {
     if (!rule.find) continue;
-    // split/join 进行字面替换，避免把用户配置内容解释成正则或替换表达式。
-    cleanedText = cleanedText.split(rule.find).join(rule.replacement);
+    // 先检查替换后的长度，再分配结果，阻止多条规则把文字指数放大。
+    let length = cleanedText.length;
+    let offset = 0;
+    let match;
+    while ((match = cleanedText.indexOf(rule.find, offset)) !== -1) {
+      length += rule.replacement.length - rule.find.length;
+      if (length > MAX_INPUT_CHARS) throw new Error("清理规则使文字超过 50 万字符，请调整替换内容。");
+      offset = match + rule.find.length;
+    }
+    cleanedText = cleanedText.replaceAll(rule.find, () => rule.replacement);
   }
   return cleanedText;
 }

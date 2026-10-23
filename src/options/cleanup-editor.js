@@ -1,8 +1,10 @@
 import { updateListControls, toggleCards } from "./list-controls.js";
+import { MAX_CONFIG_ITEMS } from "../shared/limits.js";
 
 export function createCleanupEditor({ cleanupRulesList, cleanupRuleCount, cleanupRuleSearchInput, addCleanupRuleButton, toggleCleanupRulesButton }) {
   addCleanupRuleButton.addEventListener("click", () => {
     const rules = collectCleanupRules();
+    if (rules.length >= MAX_CONFIG_ITEMS) { cleanupRuleCount.textContent = `最多 ${MAX_CONFIG_ITEMS} 条`; return; }
     const rule = { id: crypto.randomUUID(), find: "", replacement: "" };
     rules.push(rule);
     cleanupRuleSearchInput.value = "";
@@ -30,7 +32,8 @@ export function createCleanupEditor({ cleanupRulesList, cleanupRuleCount, cleanu
 
   function renderCleanupRules(rules, openId = "") {
     const previouslyOpen = new Set([...cleanupRulesList.querySelectorAll(".cleanup-rule-card[open]")].map((card) => card.dataset.cleanupRuleId));
-    cleanupRulesList.replaceChildren();
+    const existing = new Map([...cleanupRulesList.querySelectorAll(".cleanup-rule-card")].map((card) => [card.dataset.cleanupRuleId, card]));
+    cleanupRulesList.querySelectorAll(".list-empty").forEach((node) => node.remove());
 
     if (!rules.length) {
       const emptyState = document.createElement("div");
@@ -40,6 +43,21 @@ export function createCleanupEditor({ cleanupRulesList, cleanupRuleCount, cleanu
     }
 
     for (const [index, rule] of rules.entries()) {
+      const reused = existing.get(rule.id);
+      if (reused) {
+        existing.delete(rule.id);
+        reused.querySelector(".prompt-card-title").textContent = `规则 ${index + 1}`;
+        reused.querySelector("[data-cleanup-find]").value = rule.find;
+        const replacement = String(rule.replacement ?? "");
+        const mode = replacement === "" ? "delete" : replacement === " " ? "space" : replacement === "\n" ? "newline" : "custom";
+        reused.querySelector("[data-cleanup-replacement-mode]").value = mode;
+        if (mode === "custom") reused.querySelector("[data-cleanup-replacement-custom]").value = replacement;
+        reused.querySelector(".cleanup-custom-field").hidden = mode !== "custom";
+        reused.open = rule.id === openId || previouslyOpen.has(rule.id);
+        if (cleanupRulesList.children[index] !== reused) cleanupRulesList.insertBefore(reused, cleanupRulesList.children[index] || null);
+        updateCleanupRuleSummary(reused);
+        continue;
+      }
       const card = document.createElement("details");
       card.className = "prompt-card cleanup-rule-card";
       card.dataset.cleanupRuleId = rule.id || crypto.randomUUID();
@@ -110,10 +128,12 @@ export function createCleanupEditor({ cleanupRulesList, cleanupRuleCount, cleanu
 
       card.append(summary, editor);
       card.addEventListener("toggle", () => updateCleanupRuleListControls());
-      cleanupRulesList.append(card);
+      cleanupRulesList.insertBefore(card, cleanupRulesList.children[index] || null);
       updateCleanupRuleSummary(card);
     }
+    for (const obsolete of existing.values()) obsolete.remove();
     updateCleanupRuleListControls(true);
+    cleanupRulesList.dispatchEvent(new Event("settingschange", { bubbles: true }));
   }
 
   function updateCleanupRuleSummary(card) {

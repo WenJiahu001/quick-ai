@@ -29,7 +29,13 @@
         }
       },
       end_token: renderer.end_token,
-      add_text: renderer.add_text,
+      add_text(data, text) {
+        const parent = data.nodes[data.index];
+        if (!parent || !text) return;
+        // 只合并同一元素的相邻文本，不跨越 Markdown 结构。
+        if (parent.lastChild?.nodeType === Node.TEXT_NODE) parent.lastChild.appendData(text);
+        else parent.append(document.createTextNode(text));
+      },
       set_attr(data, type, value) {
         const node = data.nodes[data.index];
         if (!node) return;

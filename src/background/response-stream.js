@@ -15,15 +15,30 @@ export function createResponseStreamer({ getRequest, isCurrentRequest, sendToTab
     }, REQUEST_TIMEOUT_MS);
 
     let pendingText = "";
-    let lastTextFlushAt = Date.now();
-    const flushText = async () => {
-      if (!pendingText) return;
+    let flushTimer = 0;
+    let flushQueue = Promise.resolve();
+    const flushText = () => {
+      clearTimeout(flushTimer);
+      flushTimer = 0;
+      if (!pendingText) return flushQueue;
       const text = pendingText;
       pendingText = "";
-      lastTextFlushAt = Date.now();
-      if (!isCurrentRequest(tabId, requestId)) return;
-      await sendToTab(tabId, { type: "APPEND_TEXT", requestId, text });
+      // 定时刷新和结束刷新共用队列，保证分片先于完成消息。
+      flushQueue = flushQueue.then(async () => {
+        if (!isCurrentRequest(tabId, requestId) || (signal.aborted && !timedOut)) return;
+        await sendToTab(tabId, { type: "APPEND_TEXT", requestId, text });
+      });
+      return flushQueue;
     };
+    const scheduleFlush = () => {
+      if (flushTimer) return;
+      flushTimer = setTimeout(() => {
+        void flushText().catch(() => {
+          if (isCurrentRequest(tabId, requestId)) getRequest(tabId).controller.abort();
+        });
+      }, 50);
+    };
+    let receivedCharacters = 0;
 
     try {
       await streamChatCompletion({
@@ -39,10 +54,15 @@ export function createResponseStreamer({ getRequest, isCurrentRequest, sendToTab
           }
         },
         onText: async (text) => {
-          if (!isCurrentRequest(tabId, requestId)) return;
-          pendingText += text;
-          // 合并高频 token 分片，降低跨上下文消息数量；流结束时会立即刷新尾部内容。
-          if (Date.now() - lastTextFlushAt >= 50) await flushText();
+          if (!isCurrentRequest(tabId, requestId) || signal.aborted) return;
+          const accepted = text.slice(0, Math.max(0, 250_000 - receivedCharacters));
+          receivedCharacters += accepted.length;
+          for (let offset = 0; offset < accepted.length; offset += 4096) {
+            pendingText += accepted.slice(offset, offset + 4096);
+            if (pendingText.length >= 4096) await flushText();
+            else scheduleFlush();
+          }
+          if (accepted.length < text.length) throw new Error("回复超过安全长度上限，已保留部分内容，请缩小回答范围后重试。");
         }
       });
 
@@ -59,6 +79,8 @@ export function createResponseStreamer({ getRequest, isCurrentRequest, sendToTab
       }).catch(() => {});
     } finally {
       clearTimeout(timeout);
+      clearTimeout(flushTimer);
+      await flushQueue.catch(() => {});
     }
   };
 }

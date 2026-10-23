@@ -1,11 +1,14 @@
 (() => {
   const modules = globalThis.__quickAiOverlayModules ||= {};
   if (modules.createGeometryController) return;
-  modules.createGeometryController = ({ extensionApi, host, card, header, restoreButton, resizeHandles }) => {
+  modules.createGeometryController = ({ preferences, host, card, header, restoreButton, resizeHandles }) => {
     const boundsStorageKey = "quickAiOverlayBounds";
     let boundsSaveTimer = 0;
     let activeDrag = null;
     let activeResize = null;
+    let boundsTouched = false;
+    let dragFrame = 0;
+    let pendingDrag = null;
 
     const viewportLimits = () => ({
       maxWidth: Math.max(1, window.innerWidth - 32),
@@ -45,13 +48,14 @@
         if (card.hidden) return;
         const rect = card.getBoundingClientRect();
         const bounds = { version: 2, width: rect.width, height: rect.height, left: rect.left, top: rect.top };
-        extensionApi.storage.local.set({ [boundsStorageKey]: bounds }).catch(() => {});
+        preferences.set({ [boundsStorageKey]: bounds }).catch(() => {});
       };
       if (immediate) persist();
       else boundsSaveTimer = window.setTimeout(persist, 120);
     };
 
     const resizeFromCorner = (corner, start, deltaX, deltaY) => {
+      boundsTouched = true;
       const { maxWidth, maxHeight } = viewportLimits();
       const minWidth = Math.min(300, maxWidth);
       const minHeight = Math.min(240, maxHeight);
@@ -97,6 +101,7 @@
         if (event.button !== 0) return;
         event.preventDefault();
         event.stopPropagation();
+        boundsTouched = true;
         const rect = card.getBoundingClientRect();
         activeResize = {
           pointerId: event.pointerId,
@@ -159,47 +164,64 @@
     const resizeObserver = new ResizeObserver(constrainSize);
     resizeObserver.observe(card);
 
-    extensionApi.storage.local.get(boundsStorageKey).then((stored) => {
+    preferences.get().then((stored) => {
+      if (boundsTouched) return;
       const bounds = stored[boundsStorageKey];
       if (!bounds || ![bounds.width, bounds.height, bounds.left, bounds.top].every(Number.isFinite)) return;
       const { maxWidth, maxHeight } = viewportLimits();
       const restoredWidth = Math.min(Math.max(300, bounds.width), maxWidth);
       card.style.width = `${restoredWidth}px`;
-      card.style.height = `${Math.min(Math.max(180, bounds.height), maxHeight)}px`;
+      const restoredHeight = Math.min(Math.max(240, bounds.height), maxHeight);
+      card.style.height = `${restoredHeight}px`;
       const maxLeft = Math.max(12, window.innerWidth - restoredWidth - 12);
       // 旧版误用最大宽度限制坐标，恢复时会把所有位置压到最左侧约 20px；迁移这类旧默认位置到右侧。
       const isLegacyLeftDefault = bounds.version !== 2 && bounds.left <= 20 && bounds.left < maxLeft - 40;
       const restoredLeft = isLegacyLeftDefault ? maxLeft : Math.min(Math.max(12, bounds.left), maxLeft);
       host.style.left = `${restoredLeft}px`;
       host.style.right = "auto";
-      host.style.top = `${Math.min(Math.max(12, bounds.top), Math.max(12, window.innerHeight - 180 - 12))}px`;
+      host.style.top = `${Math.min(Math.max(12, bounds.top), Math.max(12, window.innerHeight - restoredHeight - 12))}px`;
       syncRestoreButtonPosition();
     }).catch(() => {});
 
     header.addEventListener("pointerdown", (event) => {
       if (event.button !== 0 || event.target.closest("button")) return;
+      boundsTouched = true;
       const rect = card.getBoundingClientRect();
       activeDrag = { pointerId: event.pointerId, offsetX: event.clientX - rect.left, offsetY: event.clientY - rect.top };
       header.setPointerCapture(event.pointerId);
     });
     header.addEventListener("pointermove", (event) => {
       if (!activeDrag || activeDrag.pointerId !== event.pointerId) return;
-      const left = Math.min(Math.max(12, event.clientX - activeDrag.offsetX), Math.max(12, window.innerWidth - card.offsetWidth - 12));
-      const top = Math.min(Math.max(12, event.clientY - activeDrag.offsetY), Math.max(12, window.innerHeight - card.offsetHeight - 12));
+      pendingDrag = { x: event.clientX - activeDrag.offsetX, y: event.clientY - activeDrag.offsetY };
+      if (!dragFrame) dragFrame = requestAnimationFrame(flushDrag);
+    });
+    const flushDrag = () => {
+      dragFrame = 0;
+      if (!pendingDrag) return;
+      const left = Math.min(Math.max(12, pendingDrag.x), Math.max(12, window.innerWidth - card.offsetWidth - 12));
+      const top = Math.min(Math.max(12, pendingDrag.y), Math.max(12, window.innerHeight - card.offsetHeight - 12));
+      pendingDrag = null;
       host.style.left = `${left}px`;
       host.style.right = "auto";
       host.style.top = `${top}px`;
       syncRestoreButtonPosition();
       saveBounds();
-    });
+    };
     const endDrag = (event) => {
-      if (activeDrag?.pointerId === event.pointerId) activeDrag = null;
+      if (activeDrag?.pointerId !== event.pointerId) return;
+      cancelAnimationFrame(dragFrame);
+      flushDrag();
+      activeDrag = null;
     };
     header.addEventListener("pointerup", endDrag);
     header.addEventListener("pointercancel", endDrag);
+    header.addEventListener("lostpointercapture", endDrag);
 
     window.addEventListener("resize", () => {
-      if (card.hidden) return;
+      if (card.hidden) {
+        if (!restoreButton.hidden) syncRestoreButtonPosition();
+        return;
+      }
       const { maxWidth, maxHeight } = viewportLimits();
       card.style.width = `${Math.min(card.getBoundingClientRect().width, maxWidth)}px`;
       card.style.height = `${Math.min(card.getBoundingClientRect().height, maxHeight)}px`;

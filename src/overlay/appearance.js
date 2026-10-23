@@ -2,7 +2,7 @@
   const modules = globalThis.__quickAiOverlayModules ||= {};
   if (modules.createAppearanceController) return;
   modules.createAppearanceController = ({
-    extensionApi, card, editConfirmationDialog, fontSizeSlider,
+    preferences, card, editConfirmationDialog, fontSizeSlider,
     fontSizeValue, styleButtons, outsideDismissCheckbox, displaySettingsButton,
     displaySettings
   }) => {
@@ -42,12 +42,12 @@
       clearTimeout(appearanceSaveTimer);
       const value = { ...appearance };
       appearanceSaveTimer = window.setTimeout(() => {
-        extensionApi.storage.local.set({ [appearanceStorageKey]: value }).catch(() => {});
+        preferences.set({ [appearanceStorageKey]: value }).catch(() => {});
       }, 180);
     };
 
     applyAppearance();
-    extensionApi.storage.local.get([appearanceStorageKey, outsideClickDismissStorageKey]).then((stored) => {
+    preferences.get().then((stored) => {
       if (!appearanceTouchedBeforeLoad) {
         appearance = normalizeAppearance(stored?.[appearanceStorageKey]);
         applyAppearance();
@@ -57,7 +57,7 @@
         outsideDismissCheckbox.checked = dismissOnOutsideClick;
       }
     }).catch(() => {});
-    extensionApi.storage.onChanged.addListener((changes, areaName) => {
+    preferences.subscribe((changes, areaName) => {
       if (areaName !== "local") return;
       if (changes[appearanceStorageKey]) {
         appearance = normalizeAppearance(changes[appearanceStorageKey].newValue);
@@ -91,7 +91,7 @@
     outsideDismissCheckbox.addEventListener("change", () => {
       outsideClickDismissTouchedBeforeLoad = true;
       dismissOnOutsideClick = outsideDismissCheckbox.checked;
-      extensionApi.storage.local.set({ [outsideClickDismissStorageKey]: dismissOnOutsideClick }).catch(() => {});
+      preferences.set({ [outsideClickDismissStorageKey]: dismissOnOutsideClick }).catch(() => {});
     });
 
     return { shouldDismissOutside: () => dismissOnOutsideClick };

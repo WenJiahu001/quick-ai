@@ -208,7 +208,10 @@
     copyPath.setAttribute("d", "M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2");
     copyIcon.append(copyRect, copyPath);
     copyButton.append(copyIcon);
-    answerHeading.append(answerLabel, copyButton);
+    const copyFeedback = document.createElement("span");
+    copyFeedback.className = "copy-feedback";
+    copyFeedback.setAttribute("role", "status");
+    answerHeading.append(answerLabel, copyFeedback, copyButton);
     const readingArea = document.createElement("div");
     readingArea.className = "reading-area";
     readingArea.append(answerHeading, transcript);
@@ -284,7 +287,7 @@
       styleButtons, body, transcript, requestDetails, requestSummary,
       requestText, selectedPanel, selectedSummary, selectedText, readingArea,
       composer, composerInput, sendButton, status, retryButton,
-      hideActionButton, closeButton, copyButton, resizeHandles, latestButton
+      hideActionButton, closeButton, copyButton, copyFeedback, resizeHandles, latestButton
     };
   };
 })();

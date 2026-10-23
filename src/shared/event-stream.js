@@ -1,8 +1,11 @@
+import { MAX_EVENT_CHARS } from "./limits.js";
+
 export async function readEventStream(body, onEvent, signal) {
   const reader = body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
   let dataLines = [];
+  let dataCharacters = 0;
   let completed = false;
   let doneMarkerReceived = false;
 
@@ -10,6 +13,7 @@ export async function readEventStream(body, onEvent, signal) {
     if (!dataLines.length) return false;
     const data = dataLines.join("\n");
     dataLines = [];
+    dataCharacters = 0;
     if (data === "[DONE]") {
       doneMarkerReceived = true;
       return true;
@@ -21,6 +25,7 @@ export async function readEventStream(body, onEvent, signal) {
     } catch {
       throw new Error("AI 服务商返回了无法识别的流式数据。");
     }
+    if (!event || typeof event !== "object" || Array.isArray(event)) throw new Error("AI 服务商返回了无效的流式事件。");
     await onEvent(event);
     return false;
   };
@@ -33,7 +38,10 @@ export async function readEventStream(body, onEvent, signal) {
         await dispatch();
         if (doneMarkerReceived) return true;
       } else if (line.startsWith("data:")) {
-        dataLines.push(line.slice(5).trimStart());
+        const data = line.slice(5).trimStart();
+        dataCharacters += data.length + 1;
+        if (dataCharacters > MAX_EVENT_CHARS) throw new Error("AI 服务商返回的单条事件过大，已停止接收。");
+        dataLines.push(data);
       }
     }
     if (flush) await dispatch();
@@ -45,8 +53,12 @@ export async function readEventStream(body, onEvent, signal) {
       if (signal.aborted) throw new DOMException("请求已取消", "AbortError");
       const { value, done } = await reader.read();
       if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      await consumeLines();
+      // 网络块也分段处理，避免一次解码或 split 巨型响应。
+      for (let offset = 0; offset < value.length && !doneMarkerReceived; offset += 16_384) {
+        buffer += decoder.decode(value.subarray(offset, offset + 16_384), { stream: true });
+        if (buffer.length > MAX_EVENT_CHARS) throw new Error("AI 服务商返回的流式行过长，已停止接收。");
+        await consumeLines();
+      }
     }
     if (!doneMarkerReceived) {
       buffer += decoder.decode();

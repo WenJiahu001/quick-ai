@@ -3,6 +3,25 @@
   if (modules.createTurnView) return;
   modules.createTurnView = ({ transcript, getSelectedText, onEdit, onCancelEdit, onSaveEdit }) => {
     const summarize = modules.summarize;
+    const responses = new Map();
+    let paused = false;
+    const updateResponseVisibility = (record) => {
+      if (!record.completed) return;
+      if (!record.turn.open) {
+        record.renderer?.reset();
+        record.renderer = null;
+        record.body.replaceChildren();
+      } else if (!record.body.hasChildNodes() && !record.renderer) {
+        // 旧回复只保存原文，展开时复用同一增量渲染器，避免同步重建长文。
+        record.renderer = modules.createStreamRenderer({
+          getBody: () => record.body, status: document.createElement("div"), spinner: {}, copyButton: {},
+          onScroll() {}, onComplete() { record.renderer = null; }, onLimit() {}
+        });
+        record.renderer.setPaused(paused);
+        record.renderer.append(record.text);
+        record.renderer.finish();
+      }
+    };
     const createAssistantResponseBody = (followupTurn = null) => {
       const turn = document.createElement("details");
       turn.className = "assistant-turn";
@@ -17,6 +36,9 @@
       responseBody.setAttribute("aria-live", "polite");
       turn.append(label, responseBody);
       transcript.append(turn);
+      const record = { turn, body: responseBody, text: "", completed: false, renderer: null };
+      responses.set(responseBody, record);
+      turn.addEventListener("toggle", () => updateResponseVisibility(record));
       // 只自动展开最近两轮回复，旧轮保留在内存与上下文中，可手动展开。
       const assistantTurns = [...transcript.querySelectorAll(".assistant-turn")];
       for (const previous of assistantTurns.slice(0, -2)) previous.open = false;
@@ -104,6 +126,40 @@
       return followupTurn;
     };
 
-    return { createAssistantResponseBody, appendUserTurn };
+    return {
+      createAssistantResponseBody, appendUserTurn,
+      setPaused(value) {
+        paused = value;
+        for (const record of responses.values()) record.renderer?.setPaused(value);
+      },
+      beginResponse(body) {
+        const record = responses.get(body);
+        if (!record) return;
+        record.renderer?.reset();
+        record.renderer = null;
+        record.completed = false;
+        record.text = "";
+      },
+      finishResponse(body, text) {
+        const record = responses.get(body);
+        if (!record) return;
+        record.text = text || body.textContent;
+        record.completed = true;
+        updateResponseVisibility(record);
+      },
+      removeResponse(element) {
+        for (const [body, record] of responses) {
+          if (record.turn !== element) continue;
+          record.renderer?.reset();
+          responses.delete(body);
+          record.turn.remove();
+          break;
+        }
+      },
+      clear() {
+        for (const record of responses.values()) record.renderer?.reset();
+        responses.clear();
+      }
+    };
   };
 })();

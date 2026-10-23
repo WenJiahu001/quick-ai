@@ -10,6 +10,9 @@ import {
 } from "../../config.js";
 import { OVERLAY_SCRIPT_FILES } from "../shared/runtime-files.js";
 import { createResponseStreamer } from "./response-stream.js";
+import { storageReady } from "./preferences.js";
+import { MAX_CONVERSATION_CHARS, MAX_INPUT_CHARS } from "../shared/limits.js";
+import "../shared/protocol.js";
 import "../../browser-api.js";
 
 const extensionApi = globalThis.quickAiBrowserApi;
@@ -17,9 +20,10 @@ const extensionApi = globalThis.quickAiBrowserApi;
 const activeRequests = new Map();
 const streamResponse = createResponseStreamer({ getRequest: (tabId) => activeRequests.get(tabId), isCurrentRequest, sendToTab });
 
-export function cancelRequest(tabId, message) {
+export function cancelRequest(tabId, message, documentId) {
   const request = activeRequests.get(tabId);
-  if (request?.requestId === message.requestId) {
+  if (documentId && request?.documentId !== documentId) return;
+  if (request && request.requestId === message.requestId) {
     request.controller.abort();
   }
   if (message.stop && tabId) {
@@ -27,23 +31,37 @@ export function cancelRequest(tabId, message) {
   }
 }
 
-export async function beginRequest(tabId, selectedText, promptId, retryOf = "") {
+export function cancelTabRequests(tabId) {
+  activeRequests.get(tabId)?.controller.abort();
+  activeRequests.delete(tabId);
+}
+
+export function getRequestStatus(tabId, requestId, documentId) {
+  const request = activeRequests.get(tabId);
+  return { active: Boolean(request && request.requestId === requestId && request.documentId === documentId && !request.controller.signal.aborted), protocol: globalThis.quickAiProtocol.version };
+}
+
+export async function beginRequest(tabId, selectedText, promptId, retryOf = "", documentId) {
   const previous = activeRequests.get(tabId);
   previous?.controller.abort();
 
   const requestId = crypto.randomUUID();
   const controller = new AbortController();
-  activeRequests.set(tabId, { requestId, tabId, controller });
+  const request = { requestId, tabId, controller, documentId };
+  activeRequests.set(tabId, request);
 
   try {
-    await ensureOverlay(tabId);
+    await storageReady;
+    await ensureOverlay(request);
     if (!isCurrentRequest(tabId, requestId)) return;
 
     const stored = await extensionApi.storage.local.get(null);
     if (controller.signal.aborted || !isCurrentRequest(tabId, requestId)) return;
+    if (selectedText.length > MAX_INPUT_CHARS) throw new Error("选中文字超过 50 万字符，请缩小选区后重试。");
     const cleanedSelectedText = applyCleanupRules(selectedText, normalizeCleanupRules(stored.cleanupRules));
     const prompts = normalizePrompts(stored.prompts, stored.prompt);
     const selectedPrompt = prompts.find((prompt) => prompt.id === promptId && prompt.enabled);
+    if (selectedPrompt?.content.length > MAX_INPUT_CHARS) throw new Error("提示词超过 50 万字符，请精简后重试。");
     if (!selectedPrompt) {
       await sendToTab(tabId, {
         type: "SHOW_LOADING",
@@ -71,6 +89,7 @@ export async function beginRequest(tabId, selectedText, promptId, retryOf = "") 
       promptName: selectedPrompt.name,
       promptText: selectedPrompt.content
     });
+    request.shown = true;
     if (controller.signal.aborted || !isCurrentRequest(tabId, requestId)) return;
 
     if (!cleanedSelectedText.trim()) {
@@ -106,12 +125,16 @@ export async function beginRequest(tabId, selectedText, promptId, retryOf = "") 
     }
   } catch (error) {
     if (error?.name !== "AbortError") {
+      if (!request.shown && request.documentId && isCurrentRequest(tabId, requestId)) {
+        const canRetry = selectedText.length <= MAX_INPUT_CHARS && Boolean(selectedText.trim());
+        await sendToTab(tabId, { type: "SHOW_LOADING", requestId, selectedText: "", retrySelectedText: canRetry ? selectedText : "", canRetry, promptText: "", promptId, retryOf }).catch(() => {});
+      }
       const delivered = await sendToTab(tabId, {
         type: "SHOW_ERROR",
         requestId,
         message: error?.message || "请求失败，请稍后重试。"
       }).then(() => true, () => false);
-      if (!delivered) showPageAccessError();
+      if (!delivered && isCurrentRequest(tabId, requestId)) showPageAccessError(tabId, error.message);
     }
   } finally {
     const current = activeRequests.get(tabId);
@@ -119,19 +142,21 @@ export async function beginRequest(tabId, selectedText, promptId, retryOf = "") 
   }
 }
 
-export async function beginFollowupRequest(tabId, requestId, systemPrompt, rawMessages) {
+export async function beginFollowupRequest(tabId, requestId, systemPrompt, rawMessages, documentId) {
   const previous = activeRequests.get(tabId);
   previous?.controller.abort();
 
   const controller = new AbortController();
-  activeRequests.set(tabId, { requestId, tabId, controller });
+  const request = { requestId, tabId, controller, documentId };
+  activeRequests.set(tabId, request);
 
   try {
-    await ensureOverlay(tabId);
+    await storageReady;
+    await ensureOverlay(request);
     if (controller.signal.aborted || !isCurrentRequest(tabId, requestId)) return;
     await sendToTab(tabId, { type: "FOLLOWUP_LOADING", requestId });
 
-    const messages = normalizeConversationMessages(rawMessages);
+    const messages = normalizeConversationMessages(rawMessages, systemPrompt);
     if (!messages) {
       await sendToTab(tabId, {
         type: "SHOW_TURN_ERROR",
@@ -171,13 +196,19 @@ export async function beginFollowupRequest(tabId, requestId, systemPrompt, rawMe
   }
 }
 
-function normalizeConversationMessages(value) {
+function normalizeConversationMessages(value, systemPrompt) {
   if (!Array.isArray(value) || value.length === 0 || value.length % 2 === 0) return null;
+  let totalCharacters = systemPrompt.length;
+  if (totalCharacters > MAX_INPUT_CHARS) throw new Error("提示词过长，请精简后开启新对话。");
   const messages = [];
   for (let index = 0; index < value.length; index++) {
     const message = value[index];
     const expectedRole = index % 2 === 0 ? "user" : "assistant";
     if (message?.role !== expectedRole || typeof message.content !== "string") return null;
+    totalCharacters += message.content.length;
+    if (message.content.length > MAX_INPUT_CHARS || totalCharacters > MAX_CONVERSATION_CHARS) {
+      throw new Error("完整对话超过本机安全长度上限（400 万字符），请重新选择题目开启新对话；历史未被自动裁剪。");
+    }
     messages.push({ role: expectedRole, content: message.content });
   }
   return messages;
@@ -218,26 +249,44 @@ function createSettingsError(message) {
   return error;
 }
 
-function showPageAccessError() {
-  void extensionApi.action.setBadgeBackgroundColor({ color: "#a12c20" });
-  void extensionApi.action.setBadgeText({ text: "!" });
-  void extensionApi.action.setTitle({ title: "快捷AI：无法在此页面显示回复；请在普通网页中重试" });
+function showPageAccessError(tabId, detail = "") {
+  void extensionApi.action.setBadgeBackgroundColor({ tabId, color: "#a12c20" }).catch(() => {});
+  void extensionApi.action.setBadgeText({ tabId, text: "!" }).catch(() => {});
+  void extensionApi.action.setTitle({ tabId, title: `快捷AI：${detail || "无法在此页面显示回复；请在普通网页中重试"}` }).catch(() => {});
   setTimeout(() => {
-    void extensionApi.action.setBadgeText({ text: "" });
-    void extensionApi.action.setTitle({ title: "快捷AI" });
+    void extensionApi.action.setBadgeText({ tabId, text: "" }).catch(() => {});
+    void extensionApi.action.setTitle({ tabId, title: "快捷AI" }).catch(() => {});
   }, 5000);
 }
 
-async function ensureOverlay(tabId) {
-  // 只在用户点击右键菜单后注入当前标签页，避免读取或处理页面其他内容。
-  await extensionApi.scripting.executeScript({
-    target: { tabId },
+async function ensureOverlay(request) {
+  const { tabId, requestId, controller } = request;
+  const target = request.documentId ? { tabId, documentIds: [request.documentId] } : { tabId };
+  // 轻量探测只访问扩展隔离世界；已安装的浮层不会再次注入所有脚本。
+  const [probe] = await extensionApi.scripting.executeScript({
+    target,
+    func: () => ({ installed: Boolean(globalThis.__selectionAiOverlayInstalled), protocol: globalThis.__quickAiOverlayProtocol, failed: Boolean(globalThis.__quickAiOverlayInitializationFailed), attached: Boolean(document.getElementById("selection-ai-overlay-host")) })
+  });
+  if (!isCurrentRequest(tabId, requestId) || controller.signal.aborted) throw new DOMException("已取消", "AbortError");
+  if (!probe?.documentId) throw new Error("无法确认网页文档，请刷新页面后重试。");
+  request.documentId = probe.documentId;
+  const updateMessage = "扩展文件或网页中的版本不一致，请重新加载快捷AI扩展并刷新网页。";
+  if (probe.result?.failed) throw new Error("浮层初始化失败，请重新加载扩展并刷新网页。");
+  if (probe.result?.installed) {
+    if (probe.result.protocol !== globalThis.quickAiProtocol.version || !probe.result.attached) throw new Error(updateMessage);
+    return;
+  }
+  const [installed] = await extensionApi.scripting.executeScript({
+    target: { tabId, documentIds: [request.documentId] },
     files: OVERLAY_SCRIPT_FILES
   });
+  if (!installed?.result?.ready || installed.result.protocol !== globalThis.quickAiProtocol.version) throw new Error(updateMessage);
 }
 
 function sendToTab(tabId, message) {
-  return extensionApi.tabs.sendMessage(tabId, message);
+  const request = activeRequests.get(tabId);
+  if (!request?.documentId || request.requestId !== message.requestId) return Promise.reject(new DOMException("请求已失效", "AbortError"));
+  return extensionApi.tabs.sendMessage(tabId, message, { documentId: request.documentId });
 }
 
 function isCurrentRequest(tabId, requestId) {

@@ -12,7 +12,7 @@
       box-sizing: border-box; width: min(800px, calc(100vw - 32px)); height: min(640px, calc(78vh - 24px));
       position:relative; min-width: min(300px, calc(100vw - 32px)); min-height: min(240px, calc(100vh - 40px));
       max-width: calc(100vw - 32px); max-height: calc(100vh - 40px);
-      display: flex; flex-direction: column; overflow: hidden; color: var(--card-text);
+      display: flex; flex-direction: column; overflow: hidden; color: var(--card-text); container-type:size;
       background: var(--card-bg); border: 1px solid var(--divider); border-radius: 14px;
       box-shadow: 0 16px 48px rgba(12, 24, 48, .24);
       font: 14px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -54,7 +54,7 @@
     .restore-button[hidden] { display:none; }
     .restore-button:hover { background:#f0f3f8; }
     .restore-button:focus-visible { outline:3px solid #82a8ff; outline-offset:2px; }
-    .display-settings { flex:none; padding:11px 14px 12px; border-bottom:1px solid var(--divider); background:var(--soft-bg); }
+    .display-settings { flex:0 1 auto; min-height:0; max-height:28%; overflow:auto; padding:11px 14px 12px; border-bottom:1px solid var(--divider); background:var(--soft-bg); }
     .display-settings[hidden] { display:none; }
     .settings-row { display:flex; align-items:center; gap:10px; }
     .settings-label, .settings-value { color:var(--muted-text); font-size:12px; font-weight:600; }
@@ -76,7 +76,7 @@
     .style-swatch[data-theme-choice="dark"] { background:#252d39; }
     .style-swatch[data-theme-choice="mint"] { background:#b8dcca; }
     .style-swatch[data-theme-choice="slate"] { background:#bfd0e1; }
-    .context-area { flex:none; padding:10px 14px 0; }
+    .context-area { flex:0 1 auto; min-height:0; max-height:32%; overflow:auto; padding:10px 14px 0; }
     .request-details { padding:7px 9px; border:1px solid var(--divider); border-radius:8px; background:var(--soft-bg); }
     .request-details summary { color:var(--muted-text); font-size:11px; font-weight:550; cursor:pointer; }
     .request-text { max-height:160px; overflow:auto; margin:7px 0 0; padding:7px 8px; border:1px solid var(--control-border); border-radius:6px; color:var(--muted-text); background:var(--control-bg); white-space:pre-wrap; overflow-wrap:anywhere; font:inherit; font-size:12px; }
@@ -84,7 +84,7 @@
     .selected-text { display:block; max-height:120px; overflow:auto; margin:0; padding:0; color:var(--selected-text); white-space:break-spaces; overflow-wrap:anywhere; tab-size:4; text-indent:2em; font:inherit; font-size:14px; font-weight:550; line-height:1.6; }
     .selected-summary { color:var(--muted-text); font-size:11px; cursor:pointer; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
     .selected-panel[open] .selected-summary { margin-bottom:6px; }
-    .reading-pane { display:flex; position:relative; flex:1; min-height:0; }
+    .reading-pane { display:flex; position:relative; flex:1; min-height:60px; }
     .latest-button { position:absolute; right:14px; bottom:8px; padding:4px 12px; border:1px solid var(--control-border); border-radius:14px; color:var(--accent); background:var(--soft-bg); font-size:12px; box-shadow:0 2px 8px #0001; }
     .latest-button[hidden] { display:none; }
     .assistant-turn > summary { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
@@ -121,6 +121,7 @@
     .edit-confirmation-actions .edit-confirmation-continue { border-color:var(--accent); color:var(--card-bg); background:var(--accent); }
     .answer-heading { display:flex; align-items:center; gap:8px; margin:10px 16px 0; color:var(--muted-text); font-size:12px; font-weight:650; }
     .answer-heading span { flex:1; }
+    .answer-heading .copy-feedback { flex:none; font-size:11px; }
     .copy-button { display:grid; place-items:center; width:36px; height:36px; padding:0; border:1px solid var(--control-border); border-radius:9px; background:var(--control-bg); }
     .copy-button[hidden] { display:none; }
     .copy-button:hover { filter:brightness(.96); }
@@ -151,8 +152,20 @@
     .composer-input:disabled { opacity:.65; }
     .send-button { flex:none; min-width:66px; min-height:40px; border:0; border-radius:9px; padding:7px 14px; color:var(--card-bg); background:var(--accent); font-weight:600; }
     .send-button:disabled { opacity:.55; cursor:not-allowed; }
-    .status { padding:8px 16px 0; color:var(--muted-text); font-size:12px; }
+    .status { flex:none; max-height:48px; overflow:auto; padding:8px 16px 0; color:var(--muted-text); font-size:12px; }
     .status:empty { display:none; }
+    .diagnostics-toggle { display:flex; align-items:center; gap:6px; margin-top:10px; font-size:11px; color:var(--muted-text); }
+    .diagnostics-output { margin:6px 0 0; white-space:pre-wrap; overflow-wrap:anywhere; font-size:11px; color:var(--muted-text); }
+    @container (max-height:420px) {
+      .header { flex:none; padding:6px 10px; }
+      .context-area { padding:4px 10px 0; max-height:25%; }
+      .composer { padding:5px 10px; }
+      .composer-input { max-height:64px; }
+      .card .actions { flex:none; padding:4px 10px 6px; }
+      .actions > button { min-height:30px; padding-top:3px; padding-bottom:3px; }
+      .status { max-height:32px; padding-top:3px; }
+      .display-settings { position:absolute; z-index:2; top:44px; left:6px; right:6px; max-height:calc(100% - 60px); border:1px solid var(--divider); border-radius:8px; }
+    }
     .actions { display:flex; align-items:center; justify-content:center; gap:10px; padding:8px 14px 14px; }
     .actions > button { flex:1; min-width:0; max-width:160px; padding-right:8px; padding-left:8px; white-space:nowrap; font-size:12px; }
     .button, .hide-action-button { display:inline-flex; align-items:center; justify-content:center; gap:7px; min-height:42px; border-radius:10px; padding:7px 12px; font-weight:650; }

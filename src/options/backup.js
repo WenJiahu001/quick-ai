@@ -1,5 +1,6 @@
 import { normalizeBaseUrl, normalizeProviders, normalizePrompts, normalizeCleanupRules, getActiveProvider } from "../../config.js";
 import { askBeforeLeaving } from "./dialogs.js";
+import { MAX_CONFIG_BYTES, assertConfigurationSize } from "../shared/limits.js";
 
 export function createBackupController({ collectProviders, getActiveProviderId, promptEditor, cleanupEditor, importFileInput, showStatus, hasUnsavedChanges, applyImported }) {
   async function exportSettings() {
@@ -38,7 +39,9 @@ export function createBackupController({ collectProviders, getActiveProviderId, 
     importFileInput.value = "";
     if (!file) return;
     try {
+      if (file.size > MAX_CONFIG_BYTES) throw new Error("配置文件超过 2 MB，请精简后导入。");
       const imported = JSON.parse(await file.text());
+      if (imported && typeof imported === "object") assertConfigurationSize(imported);
       if (imported?.format !== "quick-ai-settings" || imported.version !== 1) {
         throw new Error("配置文件格式或版本不受支持。");
       }
