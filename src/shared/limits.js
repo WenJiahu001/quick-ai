@@ -1,6 +1,8 @@
 export const MAX_INPUT_CHARS = 500_000;
 export const MAX_CONVERSATION_CHARS = 4_000_000;
 export const MAX_CONFIG_BYTES = 2_000_000;
+// 完整备份包含三个区块及 JSON 格式化空白，容量独立于单区块保存限制。
+export const MAX_BACKUP_BYTES = 8_000_000;
 export const MAX_CONFIG_ITEMS = 500;
 export const MAX_EVENT_CHARS = 1_000_000;
 

@@ -123,7 +123,7 @@
           <section class="transfer-section" aria-labelledby="transfer-heading">
             <div>
               <h2 id="transfer-heading">配置备份</h2>
-              <p>导出当前页面中的提示词、清理规则和服务商配置，不包含 API Key。导入后会载入页面，分别到对应选项卡保存才会生效。</p>
+              <p>导出当前页面中的提示词、清理规则和服务商配置草稿，不包含 API Key。未完成的内容也能导入继续编辑，补全后分别到对应选项卡保存才会生效。</p>
             </div>
             <div class="section-actions">
               <button id="export-settings" class="secondary-button" type="button">导出配置</button>
@@ -131,7 +131,7 @@
               <input id="import-settings-file" class="visually-hidden" type="file" accept="application/json,.json">
             </div>
           </section>
-          <p class="backup-note">API Key 不会写入备份文件。导入后，仅 ID 和 API 地址均相同的服务商保留本机 API Key；新增服务商或地址变更后需要重新填写。</p>
+          <p class="backup-note">每区块最多 2 MB，完整备份文件最多 8 MB。API Key 不会写入备份，地址中的内嵌凭据、查询参数和片段会移除。导入后，仅 ID 和有效 API 地址均相同的服务商保留本机 API Key；新增服务商、地址变更或地址未完成时需要重新填写。</p>
         </section>
       </form>
 

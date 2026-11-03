@@ -67,8 +67,8 @@ export function createProviderEditor({ showStatus }) {
     const active = getActiveProvider(providerProfiles, activeProviderId);
     providerNameInput.value = active?.name || "";
     apiKeyInput.value = active?.apiKey || "";
-    modelInput.value = active?.model || DEFAULT_SETTINGS.model;
-    baseUrlInput.value = active?.baseUrl || DEFAULT_SETTINGS.baseUrl;
+    modelInput.value = active?.model ?? DEFAULT_SETTINGS.model;
+    baseUrlInput.value = active?.baseUrl ?? DEFAULT_SETTINGS.baseUrl;
     providerCount.textContent = `${providerProfiles.length} 组`;
     removeProviderButton.disabled = providerProfiles.length <= 1;
     updateHttpWarning();

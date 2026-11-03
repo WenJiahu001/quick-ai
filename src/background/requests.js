@@ -41,7 +41,7 @@ export function getRequestStatus(tabId, requestId, documentId) {
   return { active: Boolean(request && request.requestId === requestId && request.documentId === documentId && !request.controller.signal.aborted), protocol: globalThis.quickAiProtocol.version };
 }
 
-export async function beginRequest(tabId, selectedText, promptId, retryOf = "", documentId) {
+export async function beginRequest(tabId, selectedText, promptId, retryOf = "", documentId, selectedIndent = 0) {
   const previous = activeRequests.get(tabId);
   previous?.controller.abort();
 
@@ -67,6 +67,7 @@ export async function beginRequest(tabId, selectedText, promptId, retryOf = "", 
         type: "SHOW_LOADING",
         requestId,
         retryOf,
+        selectedIndent,
         selectedText: cleanedSelectedText,
         retrySelectedText: selectedText,
         promptId,
@@ -83,6 +84,7 @@ export async function beginRequest(tabId, selectedText, promptId, retryOf = "", 
       type: "SHOW_LOADING",
       requestId,
       retryOf,
+      selectedIndent,
       selectedText: cleanedSelectedText,
       retrySelectedText: selectedText,
       promptId,
@@ -127,7 +129,7 @@ export async function beginRequest(tabId, selectedText, promptId, retryOf = "", 
     if (error?.name !== "AbortError") {
       if (!request.shown && request.documentId && isCurrentRequest(tabId, requestId)) {
         const canRetry = selectedText.length <= MAX_INPUT_CHARS && Boolean(selectedText.trim());
-        await sendToTab(tabId, { type: "SHOW_LOADING", requestId, selectedText: "", retrySelectedText: canRetry ? selectedText : "", canRetry, promptText: "", promptId, retryOf }).catch(() => {});
+        await sendToTab(tabId, { type: "SHOW_LOADING", requestId, selectedText: "", retrySelectedText: canRetry ? selectedText : "", selectedIndent, canRetry, promptText: "", promptId, retryOf }).catch(() => {});
       }
       const delivered = await sendToTab(tabId, {
         type: "SHOW_ERROR",

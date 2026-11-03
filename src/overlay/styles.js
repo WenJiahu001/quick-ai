@@ -81,7 +81,7 @@
     .request-details summary { color:var(--muted-text); font-size:11px; font-weight:550; cursor:pointer; }
     .request-text { max-height:160px; overflow:auto; margin:7px 0 0; padding:7px 8px; border:1px solid var(--control-border); border-radius:6px; color:var(--muted-text); background:var(--control-bg); white-space:pre-wrap; overflow-wrap:anywhere; font:inherit; font-size:12px; }
     .selected-panel { margin-top:9px; padding:10px 12px 12px; border:1px solid var(--selected-border); border-radius:10px; background:var(--selected-bg); }
-    .selected-text { display:block; max-height:120px; overflow:auto; margin:0; padding:0; color:var(--selected-text); white-space:break-spaces; overflow-wrap:anywhere; tab-size:4; text-indent:2em; font:inherit; font-size:14px; font-weight:550; line-height:1.6; }
+    .selected-text { display:block; max-height:120px; overflow:auto; margin:0; padding:0; color:var(--selected-text); white-space:break-spaces; overflow-wrap:anywhere; tab-size:4; text-indent:0; font:inherit; font-size:14px; font-weight:550; line-height:1.6; }
     .selected-summary { color:var(--muted-text); font-size:11px; cursor:pointer; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
     .selected-panel[open] .selected-summary { margin-bottom:6px; }
     .reading-pane { display:flex; position:relative; flex:1; min-height:60px; }

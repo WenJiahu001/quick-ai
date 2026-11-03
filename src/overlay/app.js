@@ -15,7 +15,10 @@
     } = view;
     let body = view.body;
     const preferences = modules.createPreferencesClient(extensionApi);
-    const diagnostics = modules.createDiagnostics({ container: displaySettings, getRoot: () => transcript });
+    const diagnostics = modules.createDiagnostics({
+      container: displaySettings, getRoot: () => transcript,
+      isVisible: () => !card.hidden && !document.hidden
+    });
     const lifecycle = modules.createRequestLifecycle({
       api: extensionApi,
       onWaiting: () => { status.textContent = "暂未收到新内容，可继续等待或停止后重试"; },
@@ -277,6 +280,7 @@
       restoreButton.hidden = !collapsed;
       stream.setPaused(collapsed || document.hidden);
       turnView.setPaused(collapsed || document.hidden);
+      diagnostics.refreshVisibility();
       visibilityButton.textContent = collapsed ? "+" : "−";
       visibilityButton.setAttribute("aria-expanded", String(!collapsed));
       visibilityButton.setAttribute("aria-label", collapsed ? "显示回复框" : "隐藏回复框");
@@ -285,6 +289,7 @@
     document.addEventListener("visibilitychange", () => {
       stream.setPaused(card.hidden || document.hidden);
       turnView.setPaused(card.hidden || document.hidden);
+      diagnostics.refreshVisibility();
     });
     window.addEventListener("pagehide", () => closeOverlay());
     window.addEventListener("pageshow", (event) => {
@@ -407,6 +412,7 @@
           type: "RETRY_REQUEST",
           retryOf: currentRequestId,
           selectedText: lastRequest.selectedText,
+          selectedIndent: lastRequest.selectedIndent,
           promptId: lastRequest.promptId
         });
         if (!result?.accepted) throw new Error("后台未确认重试。");
@@ -437,6 +443,14 @@
       resetStreamState();
       currentRequestId = null;
       clearConversation();
+      selectedText.textContent = "";
+      requestText.textContent = "";
+      selectedText.scrollTop = 0;
+      requestText.scrollTop = 0;
+      requestDetails.open = false;
+      requestSummary.textContent = "提示词";
+      selectedSummary.textContent = "收起原题";
+      editConfirmationMessage.textContent = "";
       body.replaceChildren();
       body.classList.remove("error", "streaming");
       spinner.hidden = true;
@@ -446,6 +460,8 @@
       card.hidden = true;
       restoreButton.hidden = true;
       isCollapsed = false;
+      diagnostics.refreshVisibility();
+      diagnostics.reset();
     };
     closeButton.addEventListener("click", closeOverlay);
 
@@ -488,6 +504,7 @@
           kind: "initial",
           canRetry: message.canRetry !== false,
           selectedText: String(message.retrySelectedText ?? message.selectedText ?? ""),
+          selectedIndent: Number.isFinite(Number(message.selectedIndent)) ? Math.min(500, Math.max(-500, Number(message.selectedIndent))) : 0,
           promptId: String(message.promptId ?? "")
         };
         requestDetails.open = false;
@@ -495,8 +512,8 @@
         requestText.textContent = message.promptText || "";
         const selectedTextValue = String(message.selectedText ?? "").replace(/\r\n?/g, "\n");
         selectedText.textContent = selectedTextValue;
-        // 如果原始文本已带首行空格，就保留这些空格，避免再叠加 CSS 缩进。
-        selectedText.style.textIndent = /^[\t \u3000]/.test(selectedTextValue) ? "0" : "2em";
+        selectedText.style.textIndent = `${lastRequest.selectedIndent}px`;
+        selectedText.scrollTop = 0;
         body = createAssistantResponseBody();
         conversationMessages = [];
         pendingTurn = { kind: "initial", messages: [{ role: "user", content: selectedTextValue }] };

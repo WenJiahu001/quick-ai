@@ -41,10 +41,10 @@ extensionApi.contextMenus.onClicked.addListener((info, tab) => {
   const fallbackText = String(info.selectionText ?? "");
   const operation = Symbol();
   selectionOperations.set(tab.id, operation);
-  void readSelectedText(tab.id, info.frameId, fallbackText).then((selectedText) => {
+  void readSelectedText(tab.id, info.frameId, fallbackText).then((selection) => {
     // 判空时忽略纯空白选区，但传给模型和界面时保留原始换行与首尾空白。
-    if (!selectedText.trim() || selectionOperations.get(tab.id) !== operation) return;
-    return beginRequest(tab.id, selectedText, promptId);
+    if (!selection.text.trim() || selectionOperations.get(tab.id) !== operation) return;
+    return beginRequest(tab.id, selection.text, promptId, "", undefined, selection.textIndent);
   });
 });
 
@@ -74,7 +74,7 @@ extensionApi.runtime.onMessage.addListener((message, sender, sendResponse) => {
     const selectedText = String(message.selectedText ?? "");
     const promptId = String(message.promptId ?? "");
     if (tabId && selectedText.trim() && promptId) {
-      void beginRequest(tabId, selectedText, promptId, String(message.retryOf || ""), sender.documentId);
+      void beginRequest(tabId, selectedText, promptId, String(message.retryOf || ""), sender.documentId, Number(message.selectedIndent) || 0);
       sendResponse({ accepted: true });
     }
     return;
