@@ -5,7 +5,7 @@
     const extensionApi = globalThis.quickAiBrowserApi;
     const view = modules.createView();
     const {
-      host, shadow, card, header, spinner,
+      host, shadow, card, header, spinner, modelBadge,
       displaySettingsButton, visibilityButton, restoreButton, editConfirmationDialog, editConfirmationMessage,
       editConfirmationContinue, displaySettings, fontSizeSlider, fontSizeValue, outsideDismissCheckbox,
       styleButtons, transcript, requestDetails, requestSummary, requestText,
@@ -48,6 +48,14 @@
     };
     const appearanceController = modules.createAppearanceController({ preferences, card, editConfirmationDialog, fontSizeSlider, fontSizeValue, styleButtons, outsideDismissCheckbox, displaySettingsButton, displaySettings });
 
+    const updateModelBadge = (providerName, model) => {
+      const parts = [String(providerName ?? "").trim(), String(model ?? "").trim()].filter(Boolean);
+      const label = parts.join(" · ");
+      modelBadge.textContent = label;
+      modelBadge.title = label;
+      modelBadge.hidden = !label;
+    };
+
     const resetStreamState = () => {
       stream.reset();
       lifecycle.reset();
@@ -63,7 +71,7 @@
     const scrollToFollowupBottom = () => scroll.update();
 
     const turnView = modules.createTurnView({
-      transcript, getSelectedText: () => selectedText.textContent,
+      transcript,
       onEdit: (turn) => beginEditingTurn(turn),
       onCancelEdit: (turn) => cancelEditingTurn(turn),
       onSaveEdit: (turn) => saveEditedTurn(turn)
@@ -450,6 +458,7 @@
       requestDetails.open = false;
       requestSummary.textContent = "提示词";
       selectedSummary.textContent = "收起原题";
+      updateModelBadge("", "");
       editConfirmationMessage.textContent = "";
       body.replaceChildren();
       body.classList.remove("error", "streaming");
@@ -500,6 +509,7 @@
         clearConversation();
         currentRequestId = message.requestId;
         currentSystemPrompt = String(message.promptText ?? "");
+        updateModelBadge(message.providerName, message.model);
         lastRequest = {
           kind: "initial",
           canRetry: message.canRetry !== false,
@@ -547,6 +557,7 @@
       if (stream.finalized && message.type !== "FOLLOWUP_LOADING") return;
 
       if (message.type === "FOLLOWUP_LOADING") {
+        updateModelBadge(message.providerName, message.model);
         resetStreamState();
         body.replaceChildren();
         body.classList.remove("error");

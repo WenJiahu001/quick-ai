@@ -49,6 +49,7 @@ export async function beginRequest(tabId, selectedText, promptId, retryOf = "", 
   const controller = new AbortController();
   const request = { requestId, tabId, controller, documentId };
   activeRequests.set(tabId, request);
+  let providerSummary = { providerName: "", model: "" };
 
   try {
     await storageReady;
@@ -57,6 +58,7 @@ export async function beginRequest(tabId, selectedText, promptId, retryOf = "", 
 
     const stored = await extensionApi.storage.local.get(null);
     if (controller.signal.aborted || !isCurrentRequest(tabId, requestId)) return;
+    providerSummary = resolveProviderSummary(stored);
     if (selectedText.length > MAX_INPUT_CHARS) throw new Error("选中文字超过 50 万字符，请缩小选区后重试。");
     const cleanedSelectedText = applyCleanupRules(selectedText, normalizeCleanupRules(stored.cleanupRules));
     const prompts = normalizePrompts(stored.prompts, stored.prompt);
@@ -71,7 +73,8 @@ export async function beginRequest(tabId, selectedText, promptId, retryOf = "", 
         selectedText: cleanedSelectedText,
         retrySelectedText: selectedText,
         promptId,
-        promptText: ""
+        promptText: "",
+        ...providerSummary
       });
       await sendToTab(tabId, {
         type: "SHOW_ERROR",
@@ -89,7 +92,8 @@ export async function beginRequest(tabId, selectedText, promptId, retryOf = "", 
       retrySelectedText: selectedText,
       promptId,
       promptName: selectedPrompt.name,
-      promptText: selectedPrompt.content
+      promptText: selectedPrompt.content,
+      ...providerSummary
     });
     request.shown = true;
     if (controller.signal.aborted || !isCurrentRequest(tabId, requestId)) return;
@@ -129,7 +133,7 @@ export async function beginRequest(tabId, selectedText, promptId, retryOf = "", 
     if (error?.name !== "AbortError") {
       if (!request.shown && request.documentId && isCurrentRequest(tabId, requestId)) {
         const canRetry = selectedText.length <= MAX_INPUT_CHARS && Boolean(selectedText.trim());
-        await sendToTab(tabId, { type: "SHOW_LOADING", requestId, selectedText: "", retrySelectedText: canRetry ? selectedText : "", selectedIndent, canRetry, promptText: "", promptId, retryOf }).catch(() => {});
+        await sendToTab(tabId, { type: "SHOW_LOADING", requestId, selectedText: "", retrySelectedText: canRetry ? selectedText : "", selectedIndent, canRetry, promptText: "", promptId, retryOf, ...providerSummary }).catch(() => {});
       }
       const delivered = await sendToTab(tabId, {
         type: "SHOW_ERROR",
@@ -156,7 +160,9 @@ export async function beginFollowupRequest(tabId, requestId, systemPrompt, rawMe
     await storageReady;
     await ensureOverlay(request);
     if (controller.signal.aborted || !isCurrentRequest(tabId, requestId)) return;
-    await sendToTab(tabId, { type: "FOLLOWUP_LOADING", requestId });
+    const stored = await extensionApi.storage.local.get(null);
+    if (controller.signal.aborted || !isCurrentRequest(tabId, requestId)) return;
+    await sendToTab(tabId, { type: "FOLLOWUP_LOADING", requestId, ...resolveProviderSummary(stored) });
 
     const messages = normalizeConversationMessages(rawMessages, systemPrompt);
     if (!messages) {
@@ -168,8 +174,6 @@ export async function beginFollowupRequest(tabId, requestId, systemPrompt, rawMe
       return;
     }
 
-    const stored = await extensionApi.storage.local.get(null);
-    if (controller.signal.aborted || !isCurrentRequest(tabId, requestId)) return;
     const { settings, baseUrl } = await resolveRequestConfiguration(tabId, stored, requestId, controller.signal);
     if (controller.signal.aborted || !isCurrentRequest(tabId, requestId)) return;
 
@@ -214,6 +218,15 @@ function normalizeConversationMessages(value, systemPrompt) {
     messages.push({ role: expectedRole, content: message.content });
   }
   return messages;
+}
+
+function resolveProviderSummary(stored) {
+  const providers = normalizeProviders(stored?.providers, stored);
+  const provider = getActiveProvider(providers, stored?.activeProviderId) || DEFAULT_SETTINGS;
+  return {
+    providerName: String(provider.name ?? "").trim(),
+    model: String(provider.model ?? "").trim()
+  };
 }
 
 async function resolveRequestConfiguration(tabId, stored, requestId, signal) {

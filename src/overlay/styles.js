@@ -43,7 +43,9 @@
     }
     .card[hidden] { display: none; }
     .header { display:flex; align-items:center; gap:10px; padding:13px 14px; border-bottom:1px solid var(--divider); cursor:move; user-select:none; }
-    .title { flex:1; font-weight:650; font-size:14px; }
+    .title { flex:1 0 auto; font-weight:650; font-size:14px; white-space:nowrap; }
+    .model-badge { flex:0 1 auto; min-width:0; max-width:55%; padding:3px 8px; border:1px solid var(--control-border); border-radius:999px; background:var(--soft-bg); color:var(--muted-text); font-size:12px; font-weight:550; line-height:1.3; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .model-badge[hidden] { display:none; }
     button { color:inherit; font:inherit; cursor:pointer; }
     .visibility-button, .display-settings-button { display:grid; place-items:center; flex:none; width:30px; height:30px; padding:0; border:1px solid var(--control-border); border-radius:8px; background:var(--control-bg); color:var(--muted-text); }
     .visibility-button:hover, .display-settings-button:hover { filter:brightness(.96); }

@@ -29,6 +29,9 @@
     const title = document.createElement("span");
     title.className = "title";
     title.textContent = "快捷AI";
+    const modelBadge = document.createElement("span");
+    modelBadge.className = "model-badge";
+    modelBadge.hidden = true;
     const displaySettingsButton = document.createElement("button");
     displaySettingsButton.className = "display-settings-button";
     displaySettingsButton.type = "button";
@@ -54,7 +57,7 @@
     visibilityButton.setAttribute("aria-label", "隐藏回复框");
     visibilityButton.title = "隐藏回复框";
     visibilityButton.textContent = "−";
-    header.append(spinner, title, displaySettingsButton, visibilityButton);
+    header.append(spinner, title, modelBadge, displaySettingsButton, visibilityButton);
     const restoreButton = document.createElement("button");
     restoreButton.className = "restore-button";
     restoreButton.type = "button";
@@ -281,7 +284,7 @@
     shadow.append(style, card, restoreButton, editConfirmationDialog);
 
     return {
-      host, shadow, card, header, spinner,
+      host, shadow, card, header, spinner, modelBadge,
       displaySettingsButton, visibilityButton, restoreButton, editConfirmationDialog, editConfirmationMessage,
       editConfirmationContinue, displaySettings, fontSizeSlider, fontSizeValue, outsideDismissCheckbox,
       styleButtons, body, transcript, requestDetails, requestSummary,

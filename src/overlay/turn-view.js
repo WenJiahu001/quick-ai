@@ -1,11 +1,23 @@
 (() => {
   const modules = globalThis.__quickAiOverlayModules ||= {};
   if (modules.createTurnView) return;
-  modules.createTurnView = ({ transcript, getSelectedText, onEdit, onCancelEdit, onSaveEdit }) => {
+  modules.createTurnView = ({ transcript, onEdit, onCancelEdit, onSaveEdit }) => {
     const summarize = modules.summarize;
     const responses = new Map();
     let paused = false;
+    const updateTurnLabel = (record) => {
+      if (!record.completed && record.turn.open) {
+        record.label.textContent = "AI";
+        record.label.title = "";
+        return;
+      }
+      const sourceText = record.summarySource || record.body.textContent || record.text;
+      const summary = record.summary || summarize(sourceText);
+      record.label.textContent = summary ? `AI · ${summary}` : "AI";
+      record.label.title = String(sourceText || "").trim().slice(0, 240);
+    };
     const updateResponseVisibility = (record) => {
+      updateTurnLabel(record);
       if (!record.completed) return;
       if (!record.turn.open) {
         record.renderer?.reset();
@@ -28,15 +40,13 @@
       turn.open = true;
       const label = document.createElement("summary");
       label.className = "turn-label";
-      const question = followupTurn?.message.textContent || getSelectedText();
-      label.textContent = `AI · ${summarize(question)}`;
-      label.title = question.slice(0, 240);
+      label.textContent = "AI";
       const responseBody = document.createElement("div");
       responseBody.className = "body";
       responseBody.setAttribute("aria-live", "polite");
       turn.append(label, responseBody);
       transcript.append(turn);
-      const record = { turn, body: responseBody, text: "", completed: false, renderer: null };
+      const record = { turn, label, body: responseBody, text: "", summary: "", summarySource: "", completed: false, renderer: null };
       responses.set(responseBody, record);
       turn.addEventListener("toggle", () => updateResponseVisibility(record));
       // 只自动展开最近两轮回复，旧轮保留在内存与上下文中，可手动展开。
@@ -139,11 +149,16 @@
         record.renderer = null;
         record.completed = false;
         record.text = "";
+        record.summary = "";
+        record.summarySource = "";
+        updateTurnLabel(record);
       },
       finishResponse(body, text) {
         const record = responses.get(body);
         if (!record) return;
         record.text = text || body.textContent;
+        record.summarySource = body.textContent || record.text;
+        record.summary = summarize(record.summarySource);
         record.completed = true;
         updateResponseVisibility(record);
       },
